@@ -1,0 +1,4 @@
+node_modules/
+kube-bench-frontend/node_modules/
+backend/bin/
+backend/lib/
