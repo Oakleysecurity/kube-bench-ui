@@ -31,14 +31,21 @@ def update_cluster():
             return error_response("Missing cluster_id")
 
         update_data = {
-            'cluster_id': data['cluster_id'],
-            'cluster_name': data.get('name'),
-            'cluster_owner': data.get('owner'),
-            'api_server': data.get('apiServer'),
-            'business_name': data.get('businessName'),
-            'access_token': data.get('token'),
-            'notes': data.get('notes')
+            'cluster_id': data['cluster_id']
         }
+
+        if 'cluster_name' in data:
+            update_data['cluster_name'] = data['cluster_name']
+        if 'cluster_owner' in data:
+            update_data['cluster_owner'] = data['cluster_owner']
+        if 'api_server' in data:
+            update_data['api_server'] = data['api_server']
+        if 'business_name' in data:
+            update_data['business_name'] = data['business_name']
+        if 'notes' in data:
+            update_data['notes'] = data['notes']
+        if 'access_token' in data and data['access_token']:
+            update_data['access_token'] = data['access_token']
 
         result = cluster_service.update_cluster(update_data)
         if result:

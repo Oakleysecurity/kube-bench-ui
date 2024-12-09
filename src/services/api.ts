@@ -104,5 +104,13 @@ export const scanApi = {
       node_name: nodeName
     });
     return response.data.data;
+  },
+
+  deleteScanTask: async (clusterId: string, mainTaskId: string) => {
+    const response = await api.post<ApiResponse<void>>('/scantaskdelete', {
+      cluster_id: clusterId,
+      main_task_id: mainTaskId
+    });
+    return response.data;
   }
 }; 

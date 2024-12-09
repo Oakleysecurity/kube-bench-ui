@@ -60,19 +60,25 @@ class ClusterService:
                 update_fields = []
                 values = []
                 
+                # 只更新提供的字段，并且只有当 access_token 不为空时才更新它
                 field_mapping = {
                     'cluster_name': 'cluster_name',
                     'cluster_owner': 'cluster_owner',
                     'api_server': 'api_server',
                     'business_name': 'business_name',
-                    'access_token': 'access_token',
                     'notes': 'notes'
                 }
                 
+                # 处理基本字段
                 for key, field in field_mapping.items():
-                    if key in data:
+                    if key in data and data[key] is not None:
                         update_fields.append(f"{field} = %s")
                         values.append(data[key])
+                
+                # 单独处理 access_token，只有当它存在且不为空时才更新
+                if 'access_token' in data and data['access_token']:
+                    update_fields.append("access_token = %s")
+                    values.append(data['access_token'])
                 
                 if not update_fields:
                     return None

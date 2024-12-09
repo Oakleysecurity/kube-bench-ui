@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Container, Box, Button, Snackbar, Alert, AlertProps } from '@mui/material';
 import ClusterList from './components/ClusterList';
 import ClusterForm from './components/ClusterForm';
-import { Cluster, NodeScanStatus } from './types/types';
+import { Cluster, NodeScanStatus, TaskGroup } from './types/types';
 import { clusterApi, scanApi } from './services/api';
 
 interface SnackbarMessage {
@@ -15,7 +15,7 @@ function App() {
   const [formOpen, setFormOpen] = useState(false);
   const [editingCluster, setEditingCluster] = useState<Cluster | undefined>();
   const [loading, setLoading] = useState(false);
-  const [scanStatus, setScanStatus] = useState<Record<string, NodeScanStatus[]>>({});
+  const [scanStatus, setScanStatus] = useState<Record<string, TaskGroup[]>>({});
   const [snackbar, setSnackbar] = useState<SnackbarMessage | null>(null);
 
   const showMessage = (message: string, severity: SnackbarMessage['severity']) => {
@@ -104,15 +104,20 @@ function App() {
       const response = await scanApi.createScanTask(clusterId);
       if (response.code === 200) {
         showMessage('扫描任务已创建', 'success');
-        setScanStatus((prev: Record<string, NodeScanStatus[]>) => ({
+        setScanStatus(prev => ({
           ...prev,
-          [clusterId]: response.data.tasks.map(task => ({
-            nodeName: task.node_name,
-            nodeIp: '',
-            status: 'pending',
-            progress: 0,
-            results: []
-          }))
+          [clusterId]: [{
+            mainTaskId: response.data.main_task_id,
+            nodeTasks: response.data.tasks.map(task => ({
+              nodeTaskId: task.node_task_id,
+              nodeName: task.node_name,
+              nodeIp: '',
+              status: 'pending',
+              progress: 0,
+              results: []
+            })),
+            createdAt: new Date().toISOString()
+          }]
         }));
       } else {
         showMessage(response.message || '创建扫描任务失败', 'error');
@@ -125,6 +130,51 @@ function App() {
       );
     } finally {
       setLoading(false);
+    }
+  };
+
+  // 从本地存储加载扫描状态
+  useEffect(() => {
+    const savedScanStatus = localStorage.getItem('scanStatus');
+    if (savedScanStatus) {
+      setScanStatus(JSON.parse(savedScanStatus));
+    }
+  }, []);
+
+  // 当扫描状态改变时保存到本地存储
+  useEffect(() => {
+    localStorage.setItem('scanStatus', JSON.stringify(scanStatus));
+  }, [scanStatus]);
+
+  // 获取扫描状态
+  const fetchScanStatus = async (clusterId: string) => {
+    try {
+      const tasks = await scanApi.getScanTasks(clusterId);
+      setScanStatus(prev => ({
+        ...prev,
+        [clusterId]: tasks
+      }));
+    } catch (error) {
+      console.error('Failed to fetch scan status:', error);
+    }
+  };
+
+  // 定期更新扫描状态
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      // 遍历所有集群，获取最新状态
+      for (const clusterId in scanStatus) {
+        await fetchScanStatus(clusterId);
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [scanStatus]);
+
+  // 当点击扫描进度标签时更新状态
+  const handleTabChange = async (clusterId: string, tabIndex: number) => {
+    if (tabIndex === 0) { // 扫描进度标签
+      await fetchScanStatus(clusterId);
     }
   };
 
@@ -149,6 +199,8 @@ function App() {
           }}
           onDelete={handleDelete}
           onScan={handleScan}
+          onTabChange={handleTabChange}
+          fetchScanStatus={fetchScanStatus}
         />
         <ClusterForm
           open={formOpen}

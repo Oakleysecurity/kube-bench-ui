@@ -12,15 +12,12 @@ export interface Cluster {
 }
 
 export interface NodeTask {
-  clusterId: string;
-  clusterName: string;
+  nodeTaskId: string;
   nodeName: string;
-  nodeRole: string;
   nodeIp: string;
   status: 'pending' | 'running' | 'done' | 'failed';
-  mainTaskId: string;
-  nodeTaskId: string;
-  createdAt: string;
+  progress: number;
+  results: any[];
 }
 
 export interface TestResult {
@@ -43,9 +40,16 @@ export interface ScanResult {
 }
 
 export interface NodeScanStatus {
+  nodeTaskId: string;
   nodeName: string;
   nodeIp: string;
   status: 'pending' | 'running' | 'done' | 'failed';
   progress: number;
   results?: TestResult[];
+}
+
+export interface TaskGroup {
+  mainTaskId: string;
+  nodeTasks: NodeTask[];
+  createdAt: string;
 } 
