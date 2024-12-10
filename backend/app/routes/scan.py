@@ -13,7 +13,7 @@ def create_scan_task():
         if 'cluster_id' not in data:
             return error_response("Missing cluster_id")
 
-        kube_bench_image = data.get('kube_bench_image', "registry.cn-zhangjiakou.aliyuncs.com/cloudnativesec/kube-bench:latest")
+        kube_bench_image = data.get('kube_bench_image', "registry.cn-zhangjiakou.aliyuncs.com/cloudnativesec/kube-bench-zh:latest")
         k8s_service = KubernetesService(kube_bench_image=kube_bench_image)
 
         main_task_id = str(uuid.uuid4())
@@ -29,10 +29,13 @@ def view_scan_tasks():
         if not cluster_id:
             return error_response("Missing cluster_id")
 
-        tasks = k8s_service.get_scan_tasks(cluster_id)
+        main_task_id = request.args.get('main_task_id')
+        
+        tasks = k8s_service.get_scan_tasks(cluster_id, main_task_id)
+        # print("Scan tasks:", tasks)
         return success_response(tasks)
     except Exception as e:
-        print(f"Error in view_scan_tasks: {str(e)}")  # 添加错误日志
+        print(f"Error in view_scan_tasks: {str(e)}")
         return error_response(str(e))
 
 @scan_bp.route('/nodescanresultsearch', methods=['POST'])
@@ -60,4 +63,19 @@ def delete_scan_task():
         k8s_service.delete_scan_task(data['cluster_id'], data['main_task_id'])
         return success_response(message="Scan task deleted successfully")
     except Exception as e:
+        return error_response(str(e))
+
+@scan_bp.route('/scantaskwatch', methods=['GET'])
+def watch_scan_task():
+    try:
+        cluster_id = request.args.get('cluster_id')
+        main_task_id = request.args.get('main_task_id')
+        if not cluster_id or not main_task_id:
+            return error_response("Missing cluster_id or main_task_id")
+
+        # 获取任务状态
+        task_status = k8s_service.get_task_watch_status(cluster_id, main_task_id)
+        return success_response(task_status)
+    except Exception as e:
+        print(f"Error in watch_scan_task: {str(e)}")
         return error_response(str(e)) 

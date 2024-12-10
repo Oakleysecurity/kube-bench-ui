@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { Cluster } from '../types/types';
+import { Cluster, TaskGroup } from '../types/types';
 
 const API_BASE_URL = 'http://localhost:5002/api/v1';
 
@@ -89,8 +89,11 @@ export const scanApi = {
     return response.data;
   },
 
-  getScanTasks: async (clusterId: string) => {
-    const response = await api.get<ApiResponse<any[]>>(`/scantaskview?cluster_id=${clusterId}`);
+  getScanTasks: async (clusterId: string, mainTaskId?: string) => {
+    const url = mainTaskId 
+      ? `/scantaskview?cluster_id=${clusterId}&main_task_id=${mainTaskId}`
+      : `/scantaskview?cluster_id=${clusterId}`;
+    const response = await api.get<ApiResponse<TaskGroup[]>>(url);
     return response.data.data;
   },
 
@@ -112,5 +115,18 @@ export const scanApi = {
       main_task_id: mainTaskId
     });
     return response.data;
+  },
+
+  watchScanTask: async (clusterId: string, mainTaskId: string) => {
+    const response = await api.get<ApiResponse<{
+      mainTaskId: string;
+      allTasksCompleted: boolean;
+      message: string;
+      nodeStatuses: Array<{
+        nodeName: string;
+        status: string;
+      }>;
+    }>>(`/scantaskwatch?cluster_id=${clusterId}&main_task_id=${mainTaskId}`);
+    return response.data.data;
   }
 }; 

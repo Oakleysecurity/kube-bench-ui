@@ -98,27 +98,114 @@ function App() {
     }
   };
 
+  // 获取扫描任务列表（不包含状态监控）
+  const fetchScanTasks = async (clusterId: string) => {
+    try {
+      const response = await scanApi.getScanTasks(clusterId);
+      setScanStatus(prev => ({
+        ...prev,
+        [clusterId]: response
+      }));
+    } catch (error) {
+      console.error('Failed to fetch scan tasks:', error);
+    }
+  };
+
+  // 监控特定任务的状态
+  const watchTaskStatus = async (clusterId: string, mainTaskId: string) => {
+    try {
+      const status = await scanApi.watchScanTask(clusterId, mainTaskId);
+      
+      if (status.allTasksCompleted) {
+        // 如果任务完成，更新任务列表
+        await fetchScanTasks(clusterId);
+        return true; // 返回 true 表示任务已完成
+      }
+
+      // 更新节点状态
+      setScanStatus(prev => ({
+        ...prev,
+        [clusterId]: prev[clusterId].map(group => {
+          if (group.mainTaskId !== mainTaskId) return group;
+          
+          return {
+            ...group,
+            nodeTasks: group.nodeTasks.map(task => {
+              const nodeStatus = status.nodeStatuses.find(s => s.nodeName === task.nodeName);
+              if (!nodeStatus) return task;
+
+              // 将状态字符串转换为正确的类型
+              let newStatus: 'pending' | 'running' | 'done' | 'failed' = 'pending';
+              switch (nodeStatus.status) {
+                case 'done':
+                  newStatus = 'done';
+                  break;
+                case 'failed':
+                  newStatus = 'failed';
+                  break;
+                case 'running':
+                  newStatus = 'running';
+                  break;
+                default:
+                  newStatus = 'pending';
+              }
+
+              return {
+                ...task,
+                status: newStatus,
+                progress: newStatus === 'done' ? 100 : 
+                         newStatus === 'failed' ? 0 : 
+                         newStatus === 'running' ? 50 : 0
+              };
+            })
+          };
+        })
+      }));
+
+      return false; // 返回 false 表示任务未完成
+    } catch (error) {
+      console.error('Failed to watch task status:', error);
+      return true; // 发生错误时停止监控
+    }
+  };
+
+  // 创建扫描任务后启动监控
   const handleScan = async (clusterId: string, selectedNodes: string[]) => {
     try {
       setLoading(true);
       const response = await scanApi.createScanTask(clusterId);
       if (response.code === 200) {
         showMessage('扫描任务已创建', 'success');
+        
+        // 创建任务记录
         setScanStatus(prev => ({
           ...prev,
-          [clusterId]: [{
-            mainTaskId: response.data.main_task_id,
-            nodeTasks: response.data.tasks.map(task => ({
-              nodeTaskId: task.node_task_id,
-              nodeName: task.node_name,
-              nodeIp: '',
-              status: 'pending',
-              progress: 0,
-              results: []
-            })),
-            createdAt: new Date().toISOString()
-          }]
+          [clusterId]: [
+            ...(prev[clusterId] || []),
+            {
+              mainTaskId: response.data.main_task_id,
+              nodeTasks: response.data.tasks.map(task => ({
+                nodeTaskId: task.node_task_id,
+                nodeName: task.node_name,
+                nodeIp: '',
+                status: 'pending',
+                progress: 0,
+                results: []
+              })),
+              createdAt: new Date().toISOString()
+            }
+          ]
         }));
+
+        // 启动任务监控
+        const mainTaskId = response.data.main_task_id;
+        const watchInterval = setInterval(async () => {
+          const isCompleted = await watchTaskStatus(clusterId, mainTaskId);
+          if (isCompleted) {
+            clearInterval(watchInterval);
+          }
+        }, 5000);
+
       } else {
         showMessage(response.message || '创建扫描任务失败', 'error');
       }
@@ -130,51 +217,6 @@ function App() {
       );
     } finally {
       setLoading(false);
-    }
-  };
-
-  // 从本地存储加载扫描状态
-  useEffect(() => {
-    const savedScanStatus = localStorage.getItem('scanStatus');
-    if (savedScanStatus) {
-      setScanStatus(JSON.parse(savedScanStatus));
-    }
-  }, []);
-
-  // 当扫描状态改变时保存到本地存储
-  useEffect(() => {
-    localStorage.setItem('scanStatus', JSON.stringify(scanStatus));
-  }, [scanStatus]);
-
-  // 获取扫描状态
-  const fetchScanStatus = async (clusterId: string) => {
-    try {
-      const tasks = await scanApi.getScanTasks(clusterId);
-      setScanStatus(prev => ({
-        ...prev,
-        [clusterId]: tasks
-      }));
-    } catch (error) {
-      console.error('Failed to fetch scan status:', error);
-    }
-  };
-
-  // 定期更新扫描状态
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      // 遍历所有集群，获取最新状态
-      for (const clusterId in scanStatus) {
-        await fetchScanStatus(clusterId);
-      }
-    }, 5000);
-
-    return () => clearInterval(interval);
-  }, [scanStatus]);
-
-  // 当点击扫描进度标签时更新状态
-  const handleTabChange = async (clusterId: string, tabIndex: number) => {
-    if (tabIndex === 0) { // 扫描进度标签
-      await fetchScanStatus(clusterId);
     }
   };
 
@@ -199,8 +241,7 @@ function App() {
           }}
           onDelete={handleDelete}
           onScan={handleScan}
-          onTabChange={handleTabChange}
-          fetchScanStatus={fetchScanStatus}
+          fetchScanStatus={fetchScanTasks}
         />
         <ClusterForm
           open={formOpen}
