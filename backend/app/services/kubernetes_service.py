@@ -13,6 +13,11 @@ from io import BytesIO
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 import os
+from reportlab.lib.units import inch
+from reportlab.pdfgen import canvas
+from reportlab.graphics.shapes import Drawing, Rect
+from reportlab.graphics.charts.piecharts import Pie
+from reportlab.graphics.charts.legends import Legend
 
 class KubernetesService:
     def __init__(self, kube_bench_image="aquasec/kube-bench:latest"):
@@ -226,7 +231,7 @@ class KubernetesService:
                 for main_task in main_tasks:
                     current_main_task_id = main_task['main_task_id']
                     
-                    # ���节点任务状态
+                    # 获取节点任务状态
                     query = """
                     SELECT 
                         node_task_id,
@@ -778,18 +783,50 @@ class KubernetesService:
                 'scan_time': task_info['inserted_at'].isoformat()
             }
 
+    def create_pie_chart(self, pass_count, fail_count, warn_count):
+        drawing = Drawing(300, 200)
+        pie = Pie()
+        pie.x = 150
+        pie.y = 50
+        pie.width = 100
+        pie.height = 100
+        pie.data = [pass_count, fail_count, warn_count]
+        pie.labels = ['通过', '失败', '警告']
+        
+        # 设置颜色
+        pie.slices.strokeWidth = 0.5
+        pie.slices[0].fillColor = colors.HexColor('#4CAF50')
+        pie.slices[1].fillColor = colors.HexColor('#F44336')
+        pie.slices[2].fillColor = colors.HexColor('#FF9800')
+        
+        # 添加图例
+        legend = Legend()
+        legend.x = 10
+        legend.y = 150
+        legend.alignment = 'right'
+        legend.columnMaximum = 1
+        legend.colorNamePairs = [
+            (colors.HexColor('#4CAF50'), '通过'),
+            (colors.HexColor('#F44336'), '失败'),
+            (colors.HexColor('#FF9800'), '警告')
+        ]
+        
+        drawing.add(pie)
+        drawing.add(legend)
+        return drawing
+
     def generate_pdf_report(self, report_data):
-        """生成PDF报告"""
         buffer = BytesIO()
-        # 设置页面大小和边距
         doc = SimpleDocTemplate(
             buffer,
             pagesize=letter,
             rightMargin=50,
             leftMargin=50,
-            topMargin=50,
-            bottomMargin=50
+            topMargin=70,
+            bottomMargin=70
         )
+        
+        # 获取样式表
         styles = getSampleStyleSheet()
         
         # 创建中文样式
@@ -878,14 +915,17 @@ class KubernetesService:
         basic_info_style = TableStyle([
             ('FONT', (0, 0), (-1, -1), 'ChineseFont'),
             ('FONTSIZE', (0, 0), (-1, -1), 10),
-            ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#757575')),  # 标签使用灰色
-            ('TEXTCOLOR', (1, 0), (-1, -1), colors.HexColor('#212121')),  # 值使用深色
+            ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#757575')),
+            ('TEXTCOLOR', (1, 0), (-1, -1), colors.HexColor('#212121')),
             ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-            ('TOPPADDING', (0, 0), (-1, -1), 6),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E0E0E0')),  # 浅灰色网格
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#F5F5F5')),  # 表头背景色
-            ('BACKGROUND', (0, 4), (-1, 4), colors.HexColor('#F5F5F5')),  # 节点信息标题背景色
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#FFFFFF')),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E0E0E0')),
+            ('LINEBELOW', (0, 0), (-1, -1), 0.5, colors.HexColor('#E0E0E0')),
+            ('ROUNDEDCORNERS', [5, 5, 5, 5]),  # 圆角
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#F5F5F5')),
+            ('BACKGROUND', (0, 4), (-1, 4), colors.HexColor('#F5F5F5')),
         ])
 
         basic_table = Table(basic_info, colWidths=[120, 400])
@@ -998,5 +1038,52 @@ class KubernetesService:
                 story.append(result_table)
                 story.append(Spacer(1, 10))
 
-        doc.build(story)
+        # 添加水印和装饰
+        def add_watermark(canvas, doc):
+            canvas.saveState()
+            # 添加背景水印
+            canvas.setFillColor(colors.HexColor('#F5F5F5'))
+            canvas.setFont('ChineseFont', 60)
+            canvas.translate(300, 400)
+            canvas.rotate(45)
+            canvas.drawString(0, 0, "安全扫描报告")
+            canvas.restoreState()
+
+        # 构建文档
+        doc.build(
+            story,
+            canvasmaker=NumberedCanvas,
+            onFirstPage=add_watermark,
+            onLaterPages=add_watermark
+        )
         return buffer
+
+class NumberedCanvas(canvas.Canvas):
+    def __init__(self, *args, **kwargs):
+        canvas.Canvas.__init__(self, *args, **kwargs)
+        self._saved_page_states = []
+
+    def showPage(self):
+        self._saved_page_states.append(dict(self.__dict__))
+        self._startPage()
+
+    def save(self):
+        num_pages = len(self._saved_page_states)
+        for state in self._saved_page_states:
+            self.__dict__.update(state)
+            self.draw_page_number(num_pages)
+            canvas.Canvas.showPage(self)
+        canvas.Canvas.save(self)
+
+    def draw_page_number(self, page_count):
+        # 添加页眉
+        self.setFont("ChineseFont", 8)
+        self.setFillColor(colors.HexColor('#757575'))
+        self.drawString(50, 800, "Kubernetes 安全扫描报告")
+        self.drawRightString(550, 800, datetime.now().strftime("%Y-%m-%d"))
+        self.line(50, 795, 550, 795)  # 添加分隔线
+
+        # 添加页脚
+        self.line(50, 50, 550, 50)  # 添加分隔线
+        page_num = f"第 {self._pageNumber} 页，共 {page_count} 页"
+        self.drawString(250, 35, page_num)

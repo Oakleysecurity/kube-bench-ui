@@ -68,6 +68,8 @@ interface DialogState {
   nodeName: string;
   results: ScanResultData | null;
   status: string;
+  mainTaskId: string;
+  nodeTaskId: string;
 }
 
 const ScanProgress = ({ taskGroups, clusterId, onDelete }: ScanProgressProps) => {
@@ -76,19 +78,28 @@ const ScanProgress = ({ taskGroups, clusterId, onDelete }: ScanProgressProps) =>
     open: false,
     nodeName: '',
     results: null,
-    status: ''
+    status: '',
+    mainTaskId: '',
+    nodeTaskId: ''
   });
   const [taskPages, setTaskPages] = useState<Record<string, number>>({});
   const [mainTaskPage, setMainTaskPage] = useState(1);
   const itemsPerPage = 10;
 
   const handleViewResults = async (nodeTask: NodeScanStatus) => {
+    const taskGroup = taskGroups.find(group => 
+      group.nodeTasks.some(task => task.nodeTaskId === nodeTask.nodeTaskId)
+    );
+    const mainTaskId = taskGroup?.mainTaskId || '';
+
     if (nodeTask.status === 'running' || nodeTask.status === 'pending') {
       setResultDialog({
         open: true,
         nodeName: nodeTask.nodeName,
         results: null,
-        status: 'running'
+        status: 'running',
+        mainTaskId,
+        nodeTaskId: nodeTask.nodeTaskId
       });
       return;
     }
@@ -98,7 +109,9 @@ const ScanProgress = ({ taskGroups, clusterId, onDelete }: ScanProgressProps) =>
         open: true,
         nodeName: nodeTask.nodeName,
         results: null,
-        status: 'failed'
+        status: 'failed',
+        mainTaskId,
+        nodeTaskId: nodeTask.nodeTaskId
       });
       return;
     }
@@ -109,7 +122,9 @@ const ScanProgress = ({ taskGroups, clusterId, onDelete }: ScanProgressProps) =>
         open: true,
         nodeName: nodeTask.nodeName,
         results: result.result,
-        status: result.status
+        status: result.status,
+        mainTaskId,
+        nodeTaskId: nodeTask.nodeTaskId
       });
     } catch (error) {
       console.error('Failed to fetch scan results:', error);
@@ -117,7 +132,9 @@ const ScanProgress = ({ taskGroups, clusterId, onDelete }: ScanProgressProps) =>
         open: true,
         nodeName: nodeTask.nodeName,
         results: null,
-        status: 'error'
+        status: 'error',
+        mainTaskId,
+        nodeTaskId: nodeTask.nodeTaskId
       });
     }
   };
@@ -127,7 +144,9 @@ const ScanProgress = ({ taskGroups, clusterId, onDelete }: ScanProgressProps) =>
       open: false,
       nodeName: '',
       results: null,
-      status: ''
+      status: '',
+      mainTaskId: '',
+      nodeTaskId: ''
     });
   };
 
@@ -368,6 +387,9 @@ const ScanProgress = ({ taskGroups, clusterId, onDelete }: ScanProgressProps) =>
             <ScanResults
               results={resultDialog.results}
               nodeName={resultDialog.nodeName}
+              clusterId={clusterId}
+              mainTaskId={resultDialog.mainTaskId}
+              nodeTaskId={resultDialog.nodeTaskId}
             />
           )}
           {resultDialog.status === 'error' && (

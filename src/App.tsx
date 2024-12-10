@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Container, Box, Button, Snackbar, Alert, AlertProps } from '@mui/material';
+import { Container, Box, Button, Snackbar, Alert, AlertProps, Typography } from '@mui/material';
 import ClusterList from './components/ClusterList';
 import ClusterForm from './components/ClusterForm';
 import { Cluster, NodeScanStatus, TaskGroup } from './types/types';
 import { clusterApi, scanApi } from './services/api';
+import { Add } from '@mui/icons-material';
 
 interface SnackbarMessage {
   message: string;
@@ -14,7 +15,12 @@ function App() {
   const [clusters, setClusters] = useState<Cluster[]>([]);
   const [formOpen, setFormOpen] = useState(false);
   const [editingCluster, setEditingCluster] = useState<Cluster | undefined>();
-  const [loading, setLoading] = useState(false);
+  const [loadingStates, setLoadingStates] = useState({
+    addCluster: false,
+    scanning: false,
+    deleting: false,
+    fetching: false
+  });
   const [scanStatus, setScanStatus] = useState<Record<string, TaskGroup[]>>({});
   const [snackbar, setSnackbar] = useState<SnackbarMessage | null>(null);
 
@@ -28,14 +34,14 @@ function App() {
 
   const fetchClusters = async () => {
     try {
-      setLoading(true);
+      setLoadingStates(prev => ({ ...prev, fetching: true }));
       const data = await clusterApi.getClusters();
       setClusters(data);
     } catch (error) {
       console.error('Failed to fetch clusters:', error);
       showMessage('获取集群列表失败', 'error');
     } finally {
-      setLoading(false);
+      setLoadingStates(prev => ({ ...prev, fetching: false }));
     }
   };
 
@@ -45,7 +51,7 @@ function App() {
 
   const handleSubmit = async (clusterData: Partial<Cluster>) => {
     try {
-      setLoading(true);
+      setLoadingStates(prev => ({ ...prev, addCluster: true }));
       if (editingCluster) {
         const response = await clusterApi.updateCluster(editingCluster.id, clusterData);
         if (response.code === 200) {
@@ -73,13 +79,13 @@ function App() {
         'error'
       );
     } finally {
-      setLoading(false);
+      setLoadingStates(prev => ({ ...prev, addCluster: false }));
     }
   };
 
   const handleDelete = async (clusterId: string) => {
     try {
-      setLoading(true);
+      setLoadingStates(prev => ({ ...prev, deleting: true }));
       const response = await clusterApi.deleteCluster(clusterId);
       if (response.code === 200) {
         showMessage('集群删除成功', 'success');
@@ -94,7 +100,7 @@ function App() {
         'error'
       );
     } finally {
-      setLoading(false);
+      setLoadingStates(prev => ({ ...prev, deleting: false }));
     }
   };
 
@@ -172,7 +178,7 @@ function App() {
   // 创建扫描任务后启动监控
   const handleScan = async (clusterId: string, selectedNodes: string[]) => {
     try {
-      setLoading(true);
+      setLoadingStates(prev => ({ ...prev, scanning: true }));
       const response = await scanApi.createScanTask(clusterId);
       if (response.code === 200) {
         showMessage('扫描任务已创建', 'success');
@@ -217,33 +223,95 @@ function App() {
         'error'
       );
     } finally {
-      setLoading(false);
+      setLoadingStates(prev => ({ ...prev, scanning: false }));
     }
   };
 
   return (
-    <Container maxWidth="lg">
-      <Box sx={{ my: 4 }}>
-        <Button 
-          variant="contained" 
-          onClick={() => setFormOpen(true)}
-          sx={{ mb: 2 }}
-          disabled={loading}
-        >
-          添加集群
-        </Button>
-        <ClusterList
-          clusters={clusters}
-          loading={loading}
-          scanStatus={scanStatus}
-          onEdit={(cluster) => {
-            setEditingCluster(cluster);
-            setFormOpen(true);
-          }}
-          onDelete={handleDelete}
-          onScan={handleScan}
-          fetchScanStatus={fetchScanTasks}
-        />
+    <Container maxWidth="xl">
+      <Box sx={{ 
+        mt: 2,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        width: '100%'
+      }}>
+        {/* 标题区域 */}
+        <Box sx={{ 
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          mb: 4,
+          width: '100%'
+        }}>
+          <Typography 
+            variant="h3" 
+            component="h1" 
+            gutterBottom
+            sx={{ 
+              color: 'primary.main',
+              fontWeight: 'bold',
+              textAlign: 'center',
+              mb: 2
+            }}
+          >
+            Kubernetes 基线扫描任务管理系统
+          </Typography>
+          <Typography 
+            variant="h5" 
+            color="text.secondary"
+            sx={{ 
+              textAlign: 'center',
+              mb: 3
+            }}
+          >
+            KUBE-BENCH-UI
+          </Typography>
+        </Box>
+
+        {/* 内容区域 - 使用新的容器来限制内容宽度 */}
+        <Container maxWidth="lg">
+          {/* 操作按钮 */}
+          <Box sx={{ 
+            width: '100%', 
+            display: 'flex', 
+            justifyContent: 'flex-end', 
+            mb: 2
+          }}>
+            <Button 
+              variant="contained" 
+              onClick={() => setFormOpen(true)}
+              disabled={loadingStates.addCluster}
+              size="large"
+              startIcon={<Add />}
+              sx={{ 
+                minWidth: '150px',
+                borderRadius: 2
+              }}
+            >
+              添加集群
+            </Button>
+          </Box>
+
+          {/* 集群列表 */}
+          <Box sx={{ width: '100%' }}>
+            <ClusterList
+              clusters={clusters}
+              loading={loadingStates.fetching}
+              scanning={loadingStates.scanning}
+              deleting={loadingStates.deleting}
+              scanStatus={scanStatus}
+              onEdit={(cluster) => {
+                setEditingCluster(cluster);
+                setFormOpen(true);
+              }}
+              onDelete={handleDelete}
+              onScan={handleScan}
+              fetchScanStatus={fetchScanTasks}
+            />
+          </Box>
+        </Container>
+
         <ClusterForm
           open={formOpen}
           cluster={editingCluster}

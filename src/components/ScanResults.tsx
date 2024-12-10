@@ -11,8 +11,9 @@ import {
   ListItem,
   ListItemText,
   styled,
+  Button,
 } from '@mui/material';
-import { ExpandMore } from '@mui/icons-material';
+import { ExpandMore, GetApp } from '@mui/icons-material';
 
 // 自定义样式组件
 const StyledPaper = styled(Paper)(({ theme }) => ({
@@ -67,9 +68,12 @@ interface ScanResultsProps {
     };
   };
   nodeName: string;
+  clusterId: string;
+  mainTaskId: string;
+  nodeTaskId: string;
 }
 
-const ScanResults = ({ results, nodeName }: ScanResultsProps) => {
+const ScanResults = ({ results, nodeName, clusterId, mainTaskId, nodeTaskId }: ScanResultsProps) => {
   const controls = results?.Controls || [];
   const totals = results?.Totals || { total_fail: 0, total_pass: 0, total_warn: 0, total_info: 0 };
   
@@ -94,13 +98,63 @@ const ScanResults = ({ results, nodeName }: ScanResultsProps) => {
     setStatusFilter(currentStatus => currentStatus === status ? null : status);
   };
 
+  const handleExportReport = async () => {
+    try {
+      const response = await fetch('http://localhost:5002/api/v1/exportreport', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/pdf',
+        },
+        body: JSON.stringify({
+          cluster_id: clusterId,
+          main_task_id: mainTaskId,
+          node_task_id: nodeTaskId
+        }),
+        mode: 'cors',
+      });
+
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `security_scan_report_${nodeName}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      } else {
+        console.error('Export failed:', await response.text());
+        throw new Error('导出失败');
+      }
+    } catch (error) {
+      console.error('Failed to export report:', error);
+    }
+  };
+
   return (
     <StyledPaper elevation={3}>
       {/* 标题和统计信息固定在顶部 */}
       <Box sx={{ position: 'sticky', top: 0, bgcolor: 'background.paper', zIndex: 1, pb: 2 }}>
-        <Typography variant="h6" gutterBottom>
-          节点: {nodeName}
-        </Typography>
+        <Box sx={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center',
+          mb: 2 
+        }}>
+          <Typography variant="h6">
+            节点: {nodeName}
+          </Typography>
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={handleExportReport}
+            startIcon={<GetApp />}
+          >
+            导出报告
+          </Button>
+        </Box>
         
         <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
           <Chip 
@@ -127,7 +181,7 @@ const ScanResults = ({ results, nodeName }: ScanResultsProps) => {
           <Chip 
             label={`信息: ${totals.total_info}`} 
             color="info"
-            disabled  // 信息标签暂不支持筛选
+            disabled
           />
         </Box>
         {statusFilter && (

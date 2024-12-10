@@ -34,17 +34,21 @@ import { scanApi } from '../services/api';
 
 interface ClusterListProps {
   clusters: Cluster[];
-  loading?: boolean;
+  loading: boolean;
+  scanning: boolean;
+  deleting: boolean;
   scanStatus: Record<string, TaskGroup[]>;
   onEdit: (cluster: Cluster) => void;
   onDelete: (clusterId: string) => void;
   onScan: (clusterId: string, selectedNodes: string[]) => void;
-  fetchScanStatus: (clusterId: string) => Promise<void>;
+  fetchScanStatus: (clusterId: string) => void;
 }
 
 const ClusterList = ({ 
   clusters, 
   loading, 
+  scanning, 
+  deleting,
   scanStatus, 
   onEdit, 
   onDelete, 
@@ -234,7 +238,7 @@ const ClusterList = ({
                           variant="contained"
                           color="primary"
                           onClick={(e) => handleButtonClick(e, () => onScan(cluster.id, []))}
-                          disabled={loading}
+                          disabled={scanning}
                           size="small"
                         >
                           开始扫描
