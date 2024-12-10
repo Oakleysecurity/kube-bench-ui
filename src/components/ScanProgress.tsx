@@ -15,8 +15,11 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  Chip,
+  Grid,
+  Paper,
 } from '@mui/material';
-import { ExpandMore, Delete } from '@mui/icons-material';
+import { ExpandMore, Delete, Schedule, Computer, Storage, NetworkCheck } from '@mui/icons-material';
 import { NodeScanStatus } from '../types/types';
 import { scanApi } from '../services/api';
 import ScanResults from './ScanResults';
@@ -33,14 +36,42 @@ interface ScanProgressProps {
   onDelete: (mainTaskId: string) => void;
 }
 
+interface ScanResultData {
+  Controls: Array<{
+    text: string;
+    version: string;
+    tests: Array<{
+      desc: string;
+      fail: number;
+      pass: number;
+      warn: number;
+      results: Array<{
+        test_number: string;
+        test_desc: string;
+        status: 'PASS' | 'FAIL' | 'WARN';
+        test_info: string[];
+        remediation?: string;
+      }>;
+    }>;
+  }>;
+  Totals: {
+    total_fail: number;
+    total_pass: number;
+    total_warn: number;
+    total_info: number;
+  };
+}
+
+interface DialogState {
+  open: boolean;
+  nodeName: string;
+  results: ScanResultData | null;
+  status: string;
+}
+
 const ScanProgress = ({ taskGroups, clusterId, onDelete }: ScanProgressProps) => {
   const [expandedTask, setExpandedTask] = useState<string | false>(false);
-  const [resultDialog, setResultDialog] = useState<{
-    open: boolean;
-    nodeName: string;
-    results: any[] | null;
-    status: string;
-  }>({
+  const [resultDialog, setResultDialog] = useState<DialogState>({
     open: false,
     nodeName: '',
     results: null,
@@ -73,7 +104,7 @@ const ScanProgress = ({ taskGroups, clusterId, onDelete }: ScanProgressProps) =>
       setResultDialog({
         open: true,
         nodeName: nodeTask.nodeName,
-        results: result.result || [],
+        results: result.result,
         status: result.status
       });
     } catch (error) {
@@ -110,75 +141,158 @@ const ScanProgress = ({ taskGroups, clusterId, onDelete }: ScanProgressProps) =>
     return 'pending';
   };
 
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleString('zh-CN');
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'done': return 'success';
+      case 'failed': return 'error';
+      case 'running': return 'info';
+      default: return 'default';
+    }
+  };
+
   return (
     <Box sx={{ width: '100%', mt: 2 }}>
       {taskGroups.map((group) => (
-        <Accordion
-          key={group.mainTaskId}
-          expanded={expandedTask === group.mainTaskId}
-          onChange={() => setExpandedTask(expandedTask === group.mainTaskId ? false : group.mainTaskId)}
+        <Paper 
+          key={group.mainTaskId} 
+          elevation={2} 
+          sx={{ mb: 2, overflow: 'hidden' }}
         >
-          <AccordionSummary expandIcon={<ExpandMore />}>
-            <Box sx={{ width: '100%', display: 'flex', alignItems: 'center' }}>
-              <Box flex={1}>
-                <Typography variant="subtitle1">
-                  主任务ID: {group.mainTaskId}
-                </Typography>
-                <LinearProgress
-                  variant="determinate"
-                  value={calculateMainTaskProgress(group.nodeTasks)}
-                  sx={{ mt: 1 }}
-                />
-                <Typography variant="caption" color="textSecondary">
-                  状态: {getMainTaskStatus(group.nodeTasks)}
-                </Typography>
-              </Box>
-              <IconButton
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete(group.mainTaskId);
-                }}
-                size="small"
-              >
-                <Delete />
-              </IconButton>
-            </Box>
-          </AccordionSummary>
-          <AccordionDetails>
-            <List>
-              {group.nodeTasks.map((task) => (
-                <ListItem 
-                  key={task.nodeTaskId}
-                  secondaryAction={
-                    <Button
-                      variant="outlined"
+          <Accordion
+            expanded={expandedTask === group.mainTaskId}
+            onChange={() => setExpandedTask(expandedTask === group.mainTaskId ? false : group.mainTaskId)}
+            sx={{ boxShadow: 'none' }}
+          >
+            <AccordionSummary 
+              expandIcon={<ExpandMore />}
+              sx={{ 
+                backgroundColor: 'rgba(0, 0, 0, 0.03)',
+                '&:hover': { backgroundColor: 'rgba(0, 0, 0, 0.05)' }
+              }}
+            >
+              <Grid container spacing={2} alignItems="center">
+                <Grid item xs={12} md={6}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 'medium' }}>
+                      主任务ID: {group.mainTaskId}
+                    </Typography>
+                    <Chip
                       size="small"
-                      onClick={() => handleViewResults(task)}
-                    >
-                      查看扫描结果
-                    </Button>
-                  }
-                >
-                  <ListItemText
-                    primary={`节点: ${task.nodeName}`}
-                    secondary={
-                      <Box>
-                        <Typography variant="body2">
-                          状态: {task.status}
-                        </Typography>
-                        <LinearProgress
-                          variant="determinate"
-                          value={task.progress}
-                          sx={{ mt: 1 }}
-                        />
-                      </Box>
-                    }
-                  />
-                </ListItem>
-              ))}
-            </List>
-          </AccordionDetails>
-        </Accordion>
+                      label={getMainTaskStatus(group.nodeTasks)}
+                      color={getStatusColor(getMainTaskStatus(group.nodeTasks))}
+                    />
+                  </Box>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
+                    <Schedule fontSize="small" color="action" />
+                    <Typography variant="body2" color="text.secondary">
+                      创建时间: {formatDate(group.createdAt)}
+                    </Typography>
+                  </Box>
+                </Grid>
+                <Grid item xs={12} md={5}>
+                  <Box sx={{ width: '100%' }}>
+                    <LinearProgress
+                      variant="determinate"
+                      value={calculateMainTaskProgress(group.nodeTasks)}
+                      sx={{ 
+                        height: 8, 
+                        borderRadius: 4,
+                        backgroundColor: 'rgba(0, 0, 0, 0.1)',
+                      }}
+                    />
+                    <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                      完成进度: {calculateMainTaskProgress(group.nodeTasks)}%
+                    </Typography>
+                  </Box>
+                </Grid>
+                <Grid item xs={12} md={1} sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <IconButton
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDelete(group.mainTaskId);
+                    }}
+                    size="small"
+                  >
+                    <Delete />
+                  </IconButton>
+                </Grid>
+              </Grid>
+            </AccordionSummary>
+            <AccordionDetails sx={{ p: 0 }}>
+              <List>
+                {group.nodeTasks.map((task) => (
+                  <ListItem 
+                    key={task.nodeTaskId}
+                    sx={{ 
+                      borderBottom: '1px solid rgba(0, 0, 0, 0.12)',
+                      '&:last-child': { borderBottom: 'none' }
+                    }}
+                  >
+                    <Grid container spacing={2} alignItems="center">
+                      <Grid item xs={12} md={4}>
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Computer fontSize="small" color="action" />
+                            <Typography variant="subtitle2">
+                              {task.nodeName}
+                            </Typography>
+                          </Box>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Storage fontSize="small" color="action" />
+                            <Typography variant="body2" color="text.secondary">
+                              角色: {task.nodeRole}
+                            </Typography>
+                          </Box>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <NetworkCheck fontSize="small" color="action" />
+                            <Typography variant="body2" color="text.secondary">
+                              IP: {task.nodeIp}
+                            </Typography>
+                          </Box>
+                        </Box>
+                      </Grid>
+                      <Grid item xs={12} md={5}>
+                        <Box sx={{ width: '100%' }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                            <Typography variant="body2">状态:</Typography>
+                            <Chip
+                              size="small"
+                              label={task.status}
+                              color={getStatusColor(task.status)}
+                            />
+                          </Box>
+                          <LinearProgress
+                            variant="determinate"
+                            value={task.progress}
+                            sx={{ 
+                              height: 6, 
+                              borderRadius: 3,
+                              backgroundColor: 'rgba(0, 0, 0, 0.1)',
+                            }}
+                          />
+                        </Box>
+                      </Grid>
+                      <Grid item xs={12} md={3} sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          onClick={() => handleViewResults(task)}
+                          startIcon={<ExpandMore />}
+                        >
+                          查看扫描结果
+                        </Button>
+                      </Grid>
+                    </Grid>
+                  </ListItem>
+                ))}
+              </List>
+            </AccordionDetails>
+          </Accordion>
+        </Paper>
       ))}
 
       <Dialog

@@ -187,8 +187,9 @@ function App() {
               nodeTasks: response.data.tasks.map(task => ({
                 nodeTaskId: task.node_task_id,
                 nodeName: task.node_name,
-                nodeIp: '',
-                status: 'pending',
+                nodeIp: task.node_ip || '',
+                nodeRole: task.node_role || 'worker',
+                status: 'pending' as const,
                 progress: 0,
                 results: []
               })),

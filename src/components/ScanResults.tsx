@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Paper,
   Typography,
@@ -33,14 +33,66 @@ const StyledListItem = styled(ListItem)({
   padding: '16px',
 });
 
+// 添加类型定义
+interface TestResult {
+  test_number: string;
+  test_desc: string;
+  status: 'PASS' | 'FAIL' | 'WARN';
+  test_info: string[];
+  remediation?: string;
+}
+
+interface Test {
+  desc: string;
+  fail: number;
+  pass: number;
+  warn: number;
+  results: TestResult[];
+}
+
+interface Control {
+  text: string;
+  version: string;
+  tests: Test[];
+}
+
 interface ScanResultsProps {
-  results: any;
+  results: {
+    Controls: Control[];
+    Totals: {
+      total_fail: number;
+      total_pass: number;
+      total_warn: number;
+      total_info: number;
+    };
+  };
   nodeName: string;
 }
 
 const ScanResults = ({ results, nodeName }: ScanResultsProps) => {
   const controls = results?.Controls || [];
   const totals = results?.Totals || { total_fail: 0, total_pass: 0, total_warn: 0, total_info: 0 };
+  
+  // 添加筛选状态
+  const [statusFilter, setStatusFilter] = useState<'PASS' | 'FAIL' | 'WARN' | null>(null);
+
+  // 使用 useMemo 处理筛选逻辑
+  const filteredControls = useMemo(() => {
+    if (!statusFilter) return controls;
+
+    return controls.map((control: Control) => ({
+      ...control,
+      tests: control.tests.map((test: Test) => ({
+        ...test,
+        results: test.results.filter((result: TestResult) => result.status === statusFilter)
+      })).filter((test: Test) => test.results.length > 0)
+    })).filter((control: Control) => control.tests.length > 0);
+  }, [controls, statusFilter]);
+
+  // 处理筛选点击
+  const handleFilterClick = (status: 'PASS' | 'FAIL' | 'WARN') => {
+    setStatusFilter(currentStatus => currentStatus === status ? null : status);
+  };
 
   return (
     <StyledPaper elevation={3}>
@@ -51,16 +103,51 @@ const ScanResults = ({ results, nodeName }: ScanResultsProps) => {
         </Typography>
         
         <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-          <Chip label={`通过: ${totals.total_pass}`} color="success" />
-          <Chip label={`失败: ${totals.total_fail}`} color="error" />
-          <Chip label={`警告: ${totals.total_warn}`} color="warning" />
-          <Chip label={`信息: ${totals.total_info}`} color="info" />
+          <Chip 
+            label={`通过: ${totals.total_pass}`} 
+            color="success"
+            onClick={() => handleFilterClick('PASS')}
+            variant={statusFilter === 'PASS' ? 'filled' : 'outlined'}
+            sx={{ cursor: 'pointer' }}
+          />
+          <Chip 
+            label={`失败: ${totals.total_fail}`} 
+            color="error"
+            onClick={() => handleFilterClick('FAIL')}
+            variant={statusFilter === 'FAIL' ? 'filled' : 'outlined'}
+            sx={{ cursor: 'pointer' }}
+          />
+          <Chip 
+            label={`警告: ${totals.total_warn}`} 
+            color="warning"
+            onClick={() => handleFilterClick('WARN')}
+            variant={statusFilter === 'WARN' ? 'filled' : 'outlined'}
+            sx={{ cursor: 'pointer' }}
+          />
+          <Chip 
+            label={`信息: ${totals.total_info}`} 
+            color="info"
+            disabled  // 信息标签暂不支持筛选
+          />
         </Box>
+        {statusFilter && (
+          <Typography 
+            variant="caption" 
+            color="textSecondary" 
+            sx={{ display: 'block', mt: 1 }}
+          >
+            当前显示: {
+              statusFilter === 'PASS' ? '通过' :
+              statusFilter === 'FAIL' ? '失败' :
+              '警告'
+            } 的检查项
+          </Typography>
+        )}
       </Box>
 
       {/* 详细结果内容 */}
       <Box sx={{ mt: 3 }}>
-        {controls.map((control: any, index: number) => (
+        {filteredControls.map((control: Control, index: number) => (
           <StyledAccordion key={index}>
             <AccordionSummary 
               expandIcon={<ExpandMore />}
@@ -74,7 +161,7 @@ const ScanResults = ({ results, nodeName }: ScanResultsProps) => {
               </Typography>
             </AccordionSummary>
             <AccordionDetails sx={{ p: 0 }}>
-              {control.tests.map((test: any, testIndex: number) => (
+              {control.tests.map((test: Test, testIndex: number) => (
                 <StyledAccordion key={testIndex}>
                   <AccordionSummary expandIcon={<ExpandMore />}>
                     <Box sx={{ 
@@ -94,7 +181,7 @@ const ScanResults = ({ results, nodeName }: ScanResultsProps) => {
                   </AccordionSummary>
                   <AccordionDetails>
                     <List sx={{ width: '100%', p: 0 }}>
-                      {test.results.map((result: any, resultIndex: number) => (
+                      {test.results.map((result: TestResult, resultIndex: number) => (
                         <StyledListItem key={resultIndex} divider>
                           <Box sx={{ 
                             display: 'flex', 

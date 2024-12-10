@@ -50,9 +50,7 @@ class KubernetesService:
                 try:
                     node_name = node.metadata.name
                     node_ip = node.status.addresses[0].address
-                    node_role = "worker"
-                    if "node-role.kubernetes.io/master" in node.metadata.labels:
-                        node_role = "master"
+                    node_role = "master" if "node-role.kubernetes.io/master" in node.metadata.labels else "worker"
 
                     node_task_id = str(uuid.uuid4())
                     job_name = f'kube-bench-{node_name}-{node_task_id[:8]}'
@@ -86,7 +84,9 @@ class KubernetesService:
 
                     successful_tasks.append({
                         'node_name': node_name,
-                        'node_task_id': node_task_id
+                        'node_task_id': node_task_id,
+                        'node_ip': node_ip,
+                        'node_role': node_role
                     })
 
                 except Exception as e:
@@ -199,12 +199,13 @@ class KubernetesService:
                         node_task_id,
                         node_name,
                         node_ip,
+                        node_role,
                         scan_status,
                         COUNT(*) as total,
                         SUM(CASE WHEN scan_status IN ('done', 'failed') THEN 1 ELSE 0 END) as completed
                     FROM cluster_node_tasks
                     WHERE cluster_id = %s AND main_task_id = %s
-                    GROUP BY node_task_id, node_name, node_ip, scan_status
+                    GROUP BY node_task_id, node_name, node_ip, node_role, scan_status
                     """
                     cursor.execute(query, (cluster_id, current_main_task_id))
                     tasks = cursor.fetchall()
@@ -214,6 +215,7 @@ class KubernetesService:
                             'nodeTaskId': task['node_task_id'],
                             'nodeName': task['node_name'],
                             'nodeIp': task['node_ip'],
+                            'nodeRole': task['node_role'],
                             'status': task['scan_status'],
                             'progress': 100 if task['scan_status'] == 'done' else (
                                 0 if task['scan_status'] == 'pending' else 50
@@ -340,7 +342,7 @@ class KubernetesService:
                 SELECT node_task_id, scanner, scan_status, task_created_at
                 FROM cluster_node_tasks
                 WHERE cluster_id = %s AND main_task_id = %s
-                AND scan_status NOT IN ('done', 'failed')  # 只获取未完成的任务
+                AND scan_status NOT IN ('done', 'failed')  # 只获取未完成��任务
                 """
                 cursor.execute(query, (cluster_id, main_task_id))
                 tasks = cursor.fetchall()
@@ -374,7 +376,7 @@ class KubernetesService:
                                 namespace='default'
                             )
                             
-                            # 映射 pod 状���到任务状态
+                            # 映射 pod 状态到任务状态
                             pod_phase = pod.status.phase
                             task_status = {
                                 'Pending': 'pending',
@@ -393,7 +395,7 @@ class KubernetesService:
                             cursor.execute(update_query, (task_status, task['node_task_id']))
                             conn.commit()
 
-                            # 如果任务完成，获取并存储扫描结果
+                            # 如果任务完成，获取并存储扫���结果
                             if task_status == 'done':
                                 print(task['node_task_id'])
                                 try:

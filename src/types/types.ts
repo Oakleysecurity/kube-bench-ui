@@ -15,6 +15,7 @@ export interface NodeTask {
   nodeTaskId: string;
   nodeName: string;
   nodeIp: string;
+  nodeRole: string;
   status: 'pending' | 'running' | 'done' | 'failed';
   progress: number;
   results: any[];
@@ -43,9 +44,10 @@ export interface NodeScanStatus {
   nodeTaskId: string;
   nodeName: string;
   nodeIp: string;
+  nodeRole: string;
   status: 'pending' | 'running' | 'done' | 'failed';
   progress: number;
-  results?: TestResult[];
+  results?: any[];
 }
 
 export interface TaskGroup {

@@ -78,12 +78,19 @@ export const clusterApi = {
   }
 };
 
+interface CreateScanTaskResponse {
+  main_task_id: string;
+  tasks: Array<{
+    node_task_id: string;
+    node_name: string;
+    node_ip: string;
+    node_role: string;
+  }>;
+}
+
 export const scanApi = {
   createScanTask: async (clusterId: string) => {
-    const response = await api.post<ApiResponse<{
-      main_task_id: string;
-      tasks: Array<{ node_name: string; node_task_id: string }>;
-    }>>('/scantaskcreate', {
+    const response = await api.post<ApiResponse<CreateScanTaskResponse>>('/scantaskcreate', {
       cluster_id: clusterId
     });
     return response.data;
