@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Box,
   Typography,
@@ -18,6 +18,7 @@ import {
   Chip,
   Grid,
   Paper,
+  Pagination,
 } from '@mui/material';
 import { ExpandMore, Delete, Schedule, Computer, Storage, NetworkCheck } from '@mui/icons-material';
 import { NodeScanStatus } from '../types/types';
@@ -77,6 +78,9 @@ const ScanProgress = ({ taskGroups, clusterId, onDelete }: ScanProgressProps) =>
     results: null,
     status: ''
   });
+  const [taskPages, setTaskPages] = useState<Record<string, number>>({});
+  const [mainTaskPage, setMainTaskPage] = useState(1);
+  const itemsPerPage = 10;
 
   const handleViewResults = async (nodeTask: NodeScanStatus) => {
     if (nodeTask.status === 'running' || nodeTask.status === 'pending') {
@@ -154,9 +158,34 @@ const ScanProgress = ({ taskGroups, clusterId, onDelete }: ScanProgressProps) =>
     }
   };
 
+  const getTaskPage = (mainTaskId: string) => taskPages[mainTaskId] || 1;
+
+  const getPaginatedNodeTasks = (tasks: NodeScanStatus[], mainTaskId: string) => {
+    const currentPage = getTaskPage(mainTaskId);
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return tasks.slice(startIndex, startIndex + itemsPerPage);
+  };
+
+  const handlePageChange = (mainTaskId: string) => (_: React.ChangeEvent<unknown>, value: number) => {
+    setTaskPages(prev => ({
+      ...prev,
+      [mainTaskId]: value
+    }));
+  };
+
+  const currentTaskGroups = useMemo(() => {
+    const startIndex = (mainTaskPage - 1) * itemsPerPage;
+    return taskGroups.slice(startIndex, startIndex + itemsPerPage);
+  }, [taskGroups, mainTaskPage]);
+
+  const handleMainTaskPageChange = (_: React.ChangeEvent<unknown>, value: number) => {
+    setMainTaskPage(value);
+    setExpandedTask(false);
+  };
+
   return (
     <Box sx={{ width: '100%', mt: 2 }}>
-      {taskGroups.map((group) => (
+      {currentTaskGroups.map((group) => (
         <Paper 
           key={group.mainTaskId} 
           elevation={2} 
@@ -224,7 +253,7 @@ const ScanProgress = ({ taskGroups, clusterId, onDelete }: ScanProgressProps) =>
             </AccordionSummary>
             <AccordionDetails sx={{ p: 0 }}>
               <List>
-                {group.nodeTasks.map((task) => (
+                {getPaginatedNodeTasks(group.nodeTasks, group.mainTaskId).map((task) => (
                   <ListItem 
                     key={task.nodeTaskId}
                     sx={{ 
@@ -290,10 +319,34 @@ const ScanProgress = ({ taskGroups, clusterId, onDelete }: ScanProgressProps) =>
                   </ListItem>
                 ))}
               </List>
+
+              {group.nodeTasks.length > itemsPerPage && (
+                <Box sx={{ py: 2, display: 'flex', justifyContent: 'center' }}>
+                  <Pagination
+                    count={Math.ceil(group.nodeTasks.length / itemsPerPage)}
+                    page={getTaskPage(group.mainTaskId)}
+                    onChange={handlePageChange(group.mainTaskId)}
+                    color="primary"
+                    size="small"
+                  />
+                </Box>
+              )}
             </AccordionDetails>
           </Accordion>
         </Paper>
       ))}
+
+      {taskGroups.length > itemsPerPage && (
+        <Box sx={{ mt: 2, display: 'flex', justifyContent: 'center' }}>
+          <Pagination
+            count={Math.ceil(taskGroups.length / itemsPerPage)}
+            page={mainTaskPage}
+            onChange={handleMainTaskPageChange}
+            color="primary"
+            size="medium"
+          />
+        </Box>
+      )}
 
       <Dialog
         open={resultDialog.open}

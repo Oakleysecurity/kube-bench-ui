@@ -15,6 +15,7 @@ import {
   Chip,
   TextField,
   InputAdornment,
+  Pagination,
 } from '@mui/material';
 import { 
   Edit, 
@@ -51,7 +52,9 @@ const ClusterList = ({
   fetchScanStatus 
 }: ClusterListProps) => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [page, setPage] = useState(1);
   const [expandedCluster, setExpandedCluster] = useState<string | false>(false);
+  const itemsPerPage = 10;
 
   const filteredClusters = useMemo(() => {
     if (!searchQuery.trim()) return clusters;
@@ -64,6 +67,11 @@ const ClusterList = ({
       cluster.apiServer.toLowerCase().includes(query)
     );
   }, [clusters, searchQuery]);
+
+  const currentClusters = useMemo(() => {
+    const startIndex = (page - 1) * itemsPerPage;
+    return filteredClusters.slice(startIndex, startIndex + itemsPerPage);
+  }, [filteredClusters, page]);
 
   const handleButtonClick = (e: ReactMouseEvent<HTMLButtonElement>, callback: () => void) => {
     e.stopPropagation();
@@ -95,6 +103,10 @@ const ClusterList = ({
     e.stopPropagation();
     fetchScanStatus(clusterId);
     setExpandedCluster(clusterId);
+  };
+
+  const handlePageChange = (_event: React.ChangeEvent<unknown>, value: number) => {
+    setPage(value);
   };
 
   return (
@@ -153,7 +165,7 @@ const ClusterList = ({
       </Paper>
 
       <List sx={{ width: '100%' }}>
-        {filteredClusters.map((cluster) => {
+        {currentClusters.map((cluster) => {
           const latestScanTime = getLatestScanTime(scanStatus[cluster.id] || []);
           
           return (
@@ -358,6 +370,17 @@ const ClusterList = ({
           );
         })}
       </List>
+
+      {filteredClusters.length > itemsPerPage && (
+        <Box sx={{ mt: 2, display: 'flex', justifyContent: 'center' }}>
+          <Pagination
+            count={Math.ceil(filteredClusters.length / itemsPerPage)}
+            page={page}
+            onChange={handlePageChange}
+            color="primary"
+          />
+        </Box>
+      )}
 
       {searchQuery && filteredClusters.length === 0 && (
         <Box 
