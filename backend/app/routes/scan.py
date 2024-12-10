@@ -1,7 +1,12 @@
-from flask import Blueprint, request
+from flask import Blueprint, request, send_file
 from app.services.kubernetes_service import KubernetesService
 from app.utils.response import success_response, error_response
 import uuid
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from io import BytesIO
 
 scan_bp = Blueprint('scan', __name__)
 k8s_service = KubernetesService()
@@ -78,4 +83,33 @@ def watch_scan_task():
         return success_response(task_status)
     except Exception as e:
         print(f"Error in watch_scan_task: {str(e)}")
+        return error_response(str(e))
+
+@scan_bp.route('/exportreport', methods=['POST'])
+def export_report():
+    try:
+        data = request.get_json()
+        if not all(k in data for k in ['cluster_id', 'main_task_id', 'node_task_id']):
+            return error_response("Missing required fields")
+
+        # 获取报告数据
+        report_data = k8s_service.generate_report_data(
+            data['cluster_id'],
+            data['main_task_id'],
+            data['node_task_id']
+        )
+        
+        # 生成PDF
+        pdf_buffer = k8s_service.generate_pdf_report(report_data)
+        
+        # 返回PDF文件
+        pdf_buffer.seek(0)
+        return send_file(
+            pdf_buffer,
+            mimetype='application/pdf',
+            as_attachment=True,
+            download_name=f'security_scan_report_{report_data["node_name"]}.pdf'
+        )
+    except Exception as e:
+        print(f"Error in export_report: {str(e)}")
         return error_response(str(e)) 

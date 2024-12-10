@@ -1,4 +1,6 @@
 flask==2.0.1
+werkzeug==2.0.3
 flask-cors==3.0.10
 mysql-connector-python==8.0.26
-kubernetes==19.15.0 
+kubernetes==19.15.0
+reportlab==4.0.4 

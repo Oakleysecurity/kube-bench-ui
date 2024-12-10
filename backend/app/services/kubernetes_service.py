@@ -5,12 +5,45 @@ import json
 import time
 from datetime import datetime
 import xml.etree.ElementTree as ET
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from io import BytesIO
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+import os
 
 class KubernetesService:
     def __init__(self, kube_bench_image="aquasec/kube-bench:latest"):
         self.kube_bench_image = kube_bench_image
         self.monitor_threads = {}  # 存储监控线程
         self.stop_monitoring = {}  # 存储停止标志
+
+        # 注册中文字体 - 使用系统字体
+        try:
+            # 尝试使用系统字体路径
+            font_paths = [
+                '/System/Library/Fonts/PingFang.ttc',  # macOS
+                '/System/Library/Fonts/STHeiti Light.ttc',  # macOS 备选
+                '/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf',  # Linux
+                'C:\\Windows\\Fonts\\msyh.ttf'  # Windows
+            ]
+            
+            font_found = False
+            for font_path in font_paths:
+                if os.path.exists(font_path):
+                    pdfmetrics.registerFont(TTFont('ChineseFont', font_path))
+                    font_found = True
+                    break
+                
+            if not font_found:
+                print("Warning: No Chinese font found, using fallback font")
+                # 如果找不到中文字体，使用默认字体
+                pdfmetrics.registerFont(TTFont('ChineseFont', 'Helvetica'))
+                
+        except Exception as e:
+            print(f"Warning: Failed to register Chinese font: {str(e)}")
 
     def get_cluster_config(self, cluster_id):
         with get_connection() as conn:
@@ -69,7 +102,7 @@ class KubernetesService:
                     if not pod_name:
                         raise Exception(f"Failed to get pod name for job {job_name}")
 
-                    # Job 创建成功且获取到 Pod 名称后，创建数据库记录
+                    # Job 创建成功后，获取到 Pod 名称后，创建数据库记录
                     self.create_node_task_record(
                         cluster_id,
                         cluster_config['cluster_name'],
@@ -172,7 +205,7 @@ class KubernetesService:
             with get_connection() as conn:
                 cursor = conn.cursor(dictionary=True)
                 
-                # 构建基础查询，使用 GROUP BY 确保每个主任务只出现一次
+                # 构建基础查询，使用 GROUP BY 保证每个主任务只出现一次
                 base_query = """
                 SELECT DISTINCT main_task_id, MIN(task_created_at) as task_created_at
                 FROM cluster_node_tasks
@@ -193,7 +226,7 @@ class KubernetesService:
                 for main_task in main_tasks:
                     current_main_task_id = main_task['main_task_id']
                     
-                    # 获取节点任务状态
+                    # ���节点任务状态
                     query = """
                     SELECT 
                         node_task_id,
@@ -342,7 +375,7 @@ class KubernetesService:
                 SELECT node_task_id, scanner, scan_status, task_created_at
                 FROM cluster_node_tasks
                 WHERE cluster_id = %s AND main_task_id = %s
-                AND scan_status NOT IN ('done', 'failed')  # 只获取未完成��任务
+                AND scan_status NOT IN ('done', 'failed')  # 只获取未完成任务
                 """
                 cursor.execute(query, (cluster_id, main_task_id))
                 tasks = cursor.fetchall()
@@ -395,7 +428,7 @@ class KubernetesService:
                             cursor.execute(update_query, (task_status, task['node_task_id']))
                             conn.commit()
 
-                            # 如果任务完成，获取并存储扫���结果
+                            # 如果任务完成，获取并存储扫描结果
                             if task_status == 'done':
                                 print(task['node_task_id'])
                                 try:
@@ -469,7 +502,7 @@ class KubernetesService:
     def store_scan_result(self, cluster_id, main_task_id, node_task_id, pod_logs):
         """存储扫描结果到数据库"""
         try:
-            # 验证并格式化 JSON
+            # 验证格式化 JSON
             try:
                 print("Raw pod logs:")
                 # print(pod_logs)
@@ -697,3 +730,273 @@ class KubernetesService:
         except Exception as e:
             print(f"Error in get_task_watch_status: {str(e)}")
             raise Exception(f"Failed to get task watch status: {str(e)}")
+
+    def generate_report_data(self, cluster_id, main_task_id, node_task_id):
+        """生成报告数据"""
+        with get_connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            
+            # 获取群信息
+            cluster_query = """
+            SELECT 
+                cluster_id as id,
+                cluster_name as name,
+                cluster_owner as owner,
+                business_name as businessName,
+                api_server as apiServer,
+                node_count as nodeCount,
+                notes,
+                created_at as createdAt,
+                updated_at as updatedAt
+            FROM cluster_info
+            WHERE cluster_id = %s
+            """
+            cursor.execute(cluster_query, (cluster_id,))
+            cluster_info = cursor.fetchone()
+            
+            # 获取节点任务信息和扫描结果
+            result_query = """
+            SELECT t.node_name, t.node_ip, t.node_role, r.scan_result, r.inserted_at
+            FROM cluster_node_tasks t
+            LEFT JOIN cluster_scan_results r ON t.node_task_id = r.node_task_id
+            WHERE t.cluster_id = %s 
+            AND t.main_task_id = %s 
+            AND t.node_task_id = %s
+            """
+            cursor.execute(result_query, (cluster_id, main_task_id, node_task_id))
+            task_info = cursor.fetchone()
+            
+            if not cluster_info or not task_info:
+                raise Exception("No data found")
+            
+            return {
+                'cluster': cluster_info,
+                'node_name': task_info['node_name'],
+                'node_ip': task_info['node_ip'],
+                'node_role': task_info['node_role'],
+                'scan_result': json.loads(task_info['scan_result']),
+                'scan_time': task_info['inserted_at'].isoformat()
+            }
+
+    def generate_pdf_report(self, report_data):
+        """生成PDF报告"""
+        buffer = BytesIO()
+        # 设置页面大小和边距
+        doc = SimpleDocTemplate(
+            buffer,
+            pagesize=letter,
+            rightMargin=50,
+            leftMargin=50,
+            topMargin=50,
+            bottomMargin=50
+        )
+        styles = getSampleStyleSheet()
+        
+        # 创建中文样式
+        chinese_style = ParagraphStyle(
+            'ChineseStyle',
+            parent=styles['Normal'],
+            fontName='ChineseFont',
+            fontSize=10,
+            leading=14,
+            spaceAfter=8
+        )
+        
+        # 标题样式
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontName='ChineseFont',
+            fontSize=24,
+            leading=30,
+            spaceAfter=30,
+            alignment=1,  # 居中对齐
+            textColor=colors.HexColor('#2196F3')  # 使用蓝色
+        )
+        
+        # 二级标题样式
+        heading2_style = ParagraphStyle(
+            'ChineseHeading2',
+            parent=styles['Heading2'],
+            fontName='ChineseFont',
+            fontSize=18,
+            leading=22,
+            spaceAfter=12,
+            textColor=colors.HexColor('#1976D2'),  # 深蓝色
+            borderPadding=(0, 0, 8, 0)  # 底部padding
+        )
+        
+        # 三级标题样式
+        heading3_style = ParagraphStyle(
+            'ChineseHeading3',
+            parent=styles['Heading3'],
+            fontName='ChineseFont',
+            fontSize=14,
+            leading=18,
+            spaceAfter=10,
+            textColor=colors.HexColor('#424242'),  # 深灰色
+            bulletIndent=0,
+            leftIndent=20
+        )
+        
+        # 四级标题样式
+        heading4_style = ParagraphStyle(
+            'ChineseHeading4',
+            parent=styles['Heading4'],
+            fontName='ChineseFont',
+            fontSize=12,
+            leading=16,
+            spaceAfter=8,
+            textColor=colors.HexColor('#616161'),  # 中灰色
+            leftIndent=40
+        )
+
+        story = []
+        
+        # 添加标题
+        story.append(Paragraph("Kubernetes 安全扫描报告", title_style))
+        story.append(Spacer(1, 30))
+
+        # 基本信息表格
+        story.append(Paragraph("基本信息", heading2_style))
+        story.append(Spacer(1, 10))
+        
+        # 分成两列显示基本信息
+        basic_info = [
+            [Paragraph("集群信息", heading4_style), ""],
+            ["集群名称:", report_data['cluster']['name']],
+            ["业务名称:", report_data['cluster']['businessName']],
+            ["负责人:", report_data['cluster']['owner']],
+            [Paragraph("节点信息", heading4_style), ""],
+            ["节点名称:", report_data['node_name']],
+            ["节点IP:", report_data['node_ip']],
+            ["节点角色:", report_data['node_role']],
+            ["扫描时间:", report_data['scan_time']]
+        ]
+        
+        # 创建表格样式
+        basic_info_style = TableStyle([
+            ('FONT', (0, 0), (-1, -1), 'ChineseFont'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#757575')),  # 标签使用灰色
+            ('TEXTCOLOR', (1, 0), (-1, -1), colors.HexColor('#212121')),  # 值使用深色
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E0E0E0')),  # 浅灰色网格
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#F5F5F5')),  # 表头背景色
+            ('BACKGROUND', (0, 4), (-1, 4), colors.HexColor('#F5F5F5')),  # 节点信息标题背景色
+        ])
+
+        basic_table = Table(basic_info, colWidths=[120, 400])
+        basic_table.setStyle(basic_info_style)
+        story.append(basic_table)
+        story.append(Spacer(1, 20))
+
+        # 扫描结果
+        story.append(Paragraph("扫描结果", heading2_style))
+        story.append(Spacer(1, 10))
+        
+        scan_result = report_data['scan_result']
+        
+        # 添加统计信息
+        total_pass = sum(test['pass'] for control in scan_result['Controls'] for test in control['tests'])
+        total_fail = sum(test['fail'] for control in scan_result['Controls'] for test in control['tests'])
+        total_warn = sum(test['warn'] for control in scan_result['Controls'] for test in control['tests'])
+        
+        stats_data = [
+            ["通过", "失败", "警告"],
+            [str(total_pass), str(total_fail), str(total_warn)]
+        ]
+        
+        stats_style = TableStyle([
+            ('FONT', (0, 0), (-1, -1), 'ChineseFont'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#4CAF50')),  # 通过-绿色
+            ('BACKGROUND', (1, 0), (1, -1), colors.HexColor('#F44336')),  # 失败-红色
+            ('BACKGROUND', (2, 0), (2, -1), colors.HexColor('#FF9800')),  # 警告-橙色
+            ('TEXTCOLOR', (0, 0), (-1, -1), colors.white),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('GRID', (0, 0), (-1, -1), 1, colors.white)
+        ])
+        
+        stats_table = Table(stats_data, colWidths=[160, 160, 160])
+        stats_table.setStyle(stats_style)
+        story.append(stats_table)
+        story.append(Spacer(1, 20))
+
+        # 详细结果
+        for control in scan_result['Controls']:
+            story.append(Paragraph(f"检查项: {control['text']}", heading3_style))
+            for test in control['tests']:
+                story.append(Paragraph(f"测试组: {test['desc']}", heading4_style))
+                result_data = [["检查项", "状态", "详情"]]
+                for result in test['results']:
+                    status_color = {
+                        'PASS': colors.HexColor('#4CAF50'),  # 绿色
+                        'FAIL': colors.HexColor('#F44336'),  # 红色
+                        'WARN': colors.HexColor('#FF9800')   # 橙色
+                    }.get(result['status'], colors.black)
+                    
+                    # 创建详情段落
+                    details = [Paragraph(result['test_desc'], chinese_style)]
+                    
+                    # 如果不是 PASS 状态，添加 test_info 和 remediation
+                    if result['status'] != 'PASS':
+                        # 添加 test_info
+                        if result.get('test_info'):
+                            details.append(Spacer(1, 5))
+                            details.append(Paragraph("详细信息:", chinese_style))
+                            for info in result['test_info']:
+                                details.append(Paragraph(f"• {info}", chinese_style))
+                        
+                        # 添加 remediation
+                        if result.get('remediation'):
+                            details.append(Spacer(1, 5))
+                            details.append(Paragraph("修复建议:", chinese_style))
+                            details.append(Paragraph(result['remediation'], chinese_style))
+                    
+                    result_data.append([
+                        Paragraph(result['test_number'], chinese_style),
+                        Paragraph(result['status'], chinese_style),
+                        details  # 使用包含多个段落的列表
+                    ])
+                
+                result_table = Table(result_data, colWidths=[80, 80, 360])
+                result_style = TableStyle([
+                    ('FONT', (0, 0), (-1, -1), 'ChineseFont'),
+                    ('FONTSIZE', (0, 0), (-1, -1), 10),
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#F5F5F5')),  # 表头背景色
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#424242')),
+                    ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                    ('VALIGN', (0, 0), (-1, -1), 'TOP'),  # 顶部对齐
+                    ('TOPPADDING', (0, 0), (-1, -1), 8),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+                    ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E0E0E0')),
+                    # 为状态列添加颜色
+                    ('TEXTCOLOR', (1, 1), (1, -1), colors.white),  # 状态文字使用白色
+                ])
+                
+                # 为每行添加不同的背景色，并为不同状态添加对应的颜色
+                for i in range(1, len(result_data)):
+                    if i % 2 == 0:
+                        result_style.add('BACKGROUND', (0, i), (0, i), colors.HexColor('#FAFAFA'))
+                        result_style.add('BACKGROUND', (2, i), (2, i), colors.HexColor('#FAFAFA'))
+                    
+                    # 根据状态设置背景色
+                    status = result_data[i][1].text
+                    status_color = {
+                        'PASS': colors.HexColor('#4CAF50'),
+                        'FAIL': colors.HexColor('#F44336'),
+                        'WARN': colors.HexColor('#FF9800')
+                    }.get(status, colors.black)
+                    result_style.add('BACKGROUND', (1, i), (1, i), status_color)
+                
+                result_table.setStyle(result_style)
+                story.append(result_table)
+                story.append(Spacer(1, 10))
+
+        doc.build(story)
+        return buffer
