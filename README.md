@@ -1,6 +1,7 @@
 # Kubernetes 基线扫描任务管理系统 (KUBE-BENCH-UI)
 
-一个基于 kube-bench 的 Kubernetes 集群安全基线扫描管理系统，提供友好的 Web 界面来管理多个集群的安全扫描任务。
+一个基于 [kube-bench]([url](https://github.com/Oakleysecurity/kube-bench-zh)) 的 Kubernetes 集群安全基线扫描管理系统，提供友好的 Web 界面来管理多个集群的安全扫描任务。
+本项目对kube-bench做了汉化，汉化详情可以参考[这个项目]([url](https://github.com/Oakleysecurity/kube-bench-zh))。
 
 ## 功能特点
 
