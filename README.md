@@ -13,6 +13,7 @@
 
 ## 页面展示
 ![image](https://github.com/user-attachments/assets/f386354c-16b2-4900-bb13-a45ea5bc7379)
+![image](https://github.com/user-attachments/assets/0adecbc9-da64-40d7-8daa-01e0f73ca01b)
 
 
 ## 技术栈
