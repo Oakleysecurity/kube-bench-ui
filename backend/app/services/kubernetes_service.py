@@ -188,6 +188,9 @@ class KubernetesService:
                         'nodeSelector': {
                             'kubernetes.io/hostname': node_name
                         },
+                        'tolerations': [{
+                           'operator': 'Exists' 
+                        }],
                         'containers': [{
                             'name': 'kube-bench',
                             'image': self.kube_bench_image,

@@ -59,6 +59,7 @@ const ClusterList = ({
   const [page, setPage] = useState(1);
   const [expandedCluster, setExpandedCluster] = useState<string | false>(false);
   const itemsPerPage = 10;
+  const [scanningStates, setScanningStates] = useState<Record<string, boolean>>({});
 
   const filteredClusters = useMemo(() => {
     if (!searchQuery.trim()) return clusters;
@@ -113,6 +114,22 @@ const ClusterList = ({
     setPage(value);
   };
 
+  const handleScan = async (clusterId: string) => {
+    setScanningStates(prev => ({
+      ...prev,
+      [clusterId]: true
+    }));
+    
+    try {
+      await onScan(clusterId, []);
+    } finally {
+      setScanningStates(prev => ({
+        ...prev,
+        [clusterId]: false
+      }));
+    }
+  };
+
   return (
     <Box>
       <Paper 
@@ -127,7 +144,7 @@ const ClusterList = ({
         <TextField
           fullWidth
           variant="outlined"
-          placeholder="搜索集群（支持集群名称、负责人、业务名称、API地址）"
+          placeholder="搜索集群（支��集群名称、负责人、业务名称、API地址）"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           InputProps={{
@@ -237,8 +254,8 @@ const ClusterList = ({
                         <Button
                           variant="contained"
                           color="primary"
-                          onClick={(e) => handleButtonClick(e, () => onScan(cluster.id, []))}
-                          disabled={scanning}
+                          onClick={(e) => handleButtonClick(e, () => handleScan(cluster.id))}
+                          disabled={scanningStates[cluster.id] || false}
                           size="small"
                         >
                           开始扫描
