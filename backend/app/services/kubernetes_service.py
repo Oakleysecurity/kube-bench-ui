@@ -29,6 +29,9 @@ class KubernetesService:
         self.stop_monitoring = {}  # 存储停止标志
         self._thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=5)
         self._lock = threading.Lock()
+        
+        # 在初始化时恢复未完成任务的监控
+        self.restore_monitoring()
 
         # 注册中文字体 - 使用系统字体
         try:
@@ -367,7 +370,7 @@ class KubernetesService:
             raise Exception(f"Failed to get scan result: {str(e)}") 
 
     def get_pod_name_by_job(self, v1, job_name):
-        """通过 Job 名称获取对应的 Pod 名称"""
+        """通过 Job 名称获取对应的 Pod ���称"""
         try:
             # 使用标签选择器查找 Pod
             pods = v1.list_namespaced_pod(
@@ -1082,6 +1085,46 @@ class KubernetesService:
             onLaterPages=add_watermark
         )
         return buffer
+
+    def restore_monitoring(self):
+        """恢复对未完成任务的监控"""
+        try:
+            with get_connection() as conn:
+                cursor = conn.cursor(dictionary=True)
+                # 查询所有未完成的主任务
+                query = """
+                SELECT DISTINCT t1.cluster_id, t1.main_task_id
+                FROM cluster_node_tasks t1
+                WHERE EXISTS (
+                    SELECT 1 
+                    FROM cluster_node_tasks t2 
+                    WHERE t2.main_task_id = t1.main_task_id 
+                    AND t2.scan_status NOT IN ('done', 'failed')
+                )
+                """
+                cursor.execute(query)
+                unfinished_tasks = cursor.fetchall()
+
+                print(f"Found {len(unfinished_tasks)} unfinished tasks to restore monitoring")
+                
+                # 恢复每个未完成任务的监控
+                for task in unfinished_tasks:
+                    try:
+                        # 初始化监控标志和线程
+                        self.stop_monitoring[task['main_task_id']] = False
+                        monitor_thread = threading.Thread(
+                            target=self.monitor_scan_task,
+                            args=(task['cluster_id'], task['main_task_id']),
+                            daemon=True
+                        )
+                        monitor_thread.start()
+                        self.monitor_threads[task['main_task_id']] = monitor_thread
+                        print(f"Restored monitoring for task {task['main_task_id']}")
+                    except Exception as e:
+                        print(f"Error restoring monitoring for task {task['main_task_id']}: {str(e)}")
+
+        except Exception as e:
+            print(f"Error in restore_monitoring: {str(e)}")
 
 class NumberedCanvas(canvas.Canvas):
     def __init__(self, *args, **kwargs):
