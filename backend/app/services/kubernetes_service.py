@@ -23,12 +23,19 @@ from typing import List
 import threading
 
 class KubernetesService:
-    def __init__(self, kube_bench_image="aquasec/kube-bench:latest"):
-        self.kube_bench_image = kube_bench_image
+    def __init__(self, kube_bench_image=None):
+        # 优先使用环境变量中的镜像名，其次使用参数传入的镜像名，最后使用默认值
+        self.kube_bench_image = (
+            os.getenv('KUBE_BENCH_IMAGE') or 
+            kube_bench_image or 
+            "registry.cn-zhangjiakou.aliyuncs.com/cloudnativesec/kube-bench-zh:latest"
+        )
         self.monitor_threads = {}  # 存储监控线程
         self.stop_monitoring = {}  # 存储停止标志
         self._thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=5)
         self._lock = threading.Lock()
+        
+        print(f"Using kube-bench image: {self.kube_bench_image}")
         
         # 在初始化时恢复未完成任务的监控
         self.restore_monitoring()
@@ -370,7 +377,7 @@ class KubernetesService:
             raise Exception(f"Failed to get scan result: {str(e)}") 
 
     def get_pod_name_by_job(self, v1, job_name):
-        """通过 Job 名称获取对应的 Pod ���称"""
+        """通过 Job 名称获取对应的 Pod 名称"""
         try:
             # 使用标签选择器查找 Pod
             pods = v1.list_namespaced_pod(

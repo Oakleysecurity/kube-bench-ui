@@ -16,6 +16,11 @@ import {
   TextField,
   InputAdornment,
   Pagination,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
 } from '@mui/material';
 import { 
   Edit, 
@@ -60,6 +65,8 @@ const ClusterList = ({
   const [expandedCluster, setExpandedCluster] = useState<string | false>(false);
   const itemsPerPage = 10;
   const [scanningStates, setScanningStates] = useState<Record<string, boolean>>({});
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [clusterToDelete, setClusterToDelete] = useState<Cluster | null>(null);
 
   const filteredClusters = useMemo(() => {
     if (!searchQuery.trim()) return clusters;
@@ -130,6 +137,25 @@ const ClusterList = ({
     }
   };
 
+  const handleDeleteClick = (e: ReactMouseEvent<HTMLButtonElement>, cluster: Cluster) => {
+    e.stopPropagation();
+    setClusterToDelete(cluster);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = () => {
+    if (clusterToDelete) {
+      onDelete(clusterToDelete.id);
+      setDeleteDialogOpen(false);
+      setClusterToDelete(null);
+    }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteDialogOpen(false);
+    setClusterToDelete(null);
+  };
+
   return (
     <Box>
       <Paper 
@@ -144,7 +170,7 @@ const ClusterList = ({
         <TextField
           fullWidth
           variant="outlined"
-          placeholder="搜索集群（支��集群名称、负责人、业务名称、API地址）"
+          placeholder="搜索集群（支持集群名称、负责人、业务名称、API地址）"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           InputProps={{
@@ -234,6 +260,18 @@ const ClusterList = ({
                               负责人: {cluster.owner}
                             </Typography>
                           </Box>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Schedule fontSize="small" color="action" />
+                            <Typography variant="body2" color="text.secondary">
+                              创建时间: {formatDate(cluster.createdAt)}
+                            </Typography>
+                          </Box>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Schedule fontSize="small" color="action" />
+                            <Typography variant="body2" color="text.secondary">
+                              更新时间: {formatDate(cluster.updatedAt)}
+                            </Typography>
+                          </Box>
                         </Box>
                       </Grid>
                       <Grid item xs={12} md={3} sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
@@ -245,7 +283,7 @@ const ClusterList = ({
                           <Edit />
                         </IconButton>
                         <IconButton
-                          onClick={(e) => handleButtonClick(e, () => onDelete(cluster.id))}
+                          onClick={(e) => handleDeleteClick(e, cluster)}
                           disabled={loading}
                           size="small"
                         >
@@ -305,22 +343,6 @@ const ClusterList = ({
                                   {cluster.apiServer}
                                 </Typography>
                               </Box>
-                              <Box>
-                                <Typography variant="subtitle2" color="textSecondary" gutterBottom>
-                                  集群负责人
-                                </Typography>
-                                <Typography variant="body1">
-                                  {cluster.owner}
-                                </Typography>
-                              </Box>
-                              <Box>
-                                <Typography variant="subtitle2" color="textSecondary" gutterBottom>
-                                  集群业务名称
-                                </Typography>
-                                <Typography variant="body1">
-                                  {cluster.businessName}
-                                </Typography>
-                              </Box>
                             </Box>
                           </Grid>
                           <Grid item xs={12} md={6}>
@@ -350,24 +372,6 @@ const ClusterList = ({
                                   }}
                                 >
                                   {cluster.notes || '-'}
-                                </Typography>
-                              </Box>
-                              <Box>
-                                <Typography variant="subtitle2" color="textSecondary" gutterBottom>
-                                  创建时间
-                                </Typography>
-                                <Typography variant="body1" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                  <Schedule fontSize="small" color="action" />
-                                  {formatDate(cluster.createdAt)}
-                                </Typography>
-                              </Box>
-                              <Box>
-                                <Typography variant="subtitle2" color="textSecondary" gutterBottom>
-                                  更新时间
-                                </Typography>
-                                <Typography variant="body1" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                  <Schedule fontSize="small" color="action" />
-                                  {formatDate(cluster.updatedAt)}
                                 </Typography>
                               </Box>
                             </Box>
@@ -420,6 +424,117 @@ const ClusterList = ({
           </Typography>
         </Box>
       )}
+
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={handleDeleteCancel}
+        aria-labelledby="delete-dialog-title"
+        aria-describedby="delete-dialog-description"
+        PaperProps={{
+          sx: {
+            borderRadius: 2,
+            minWidth: '400px'
+          }
+        }}
+      >
+        <DialogTitle 
+          id="delete-dialog-title"
+          sx={{
+            pb: 1,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1,
+            color: 'error.main'
+          }}
+        >
+          <Delete fontSize="small" color="error" />
+          确认删除集群
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText 
+            id="delete-dialog-description"
+            sx={{ 
+              color: 'text.primary',
+              mt: 1
+            }}
+          >
+            {clusterToDelete && (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <Typography variant="body1">
+                  您确定要删除以下集群吗？此操作无法撤销。
+                </Typography>
+                <Paper 
+                  variant="outlined" 
+                  sx={{ 
+                    p: 2,
+                    bgcolor: 'rgba(0, 0, 0, 0.02)',
+                    borderRadius: 1
+                  }}
+                >
+                  <Grid container spacing={2}>
+                    <Grid item xs={4}>
+                      <Typography variant="body2" color="text.secondary">
+                        集群名称
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={8}>
+                      <Typography variant="body1" fontWeight="medium">
+                        {clusterToDelete.name}
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={4}>
+                      <Typography variant="body2" color="text.secondary">
+                        业务名称
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={8}>
+                      <Typography variant="body1">
+                        {clusterToDelete.businessName}
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={4}>
+                      <Typography variant="body2" color="text.secondary">
+                        负责人
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={8}>
+                      <Typography variant="body1">
+                        {clusterToDelete.owner}
+                      </Typography>
+                    </Grid>
+                  </Grid>
+                </Paper>
+              </Box>
+            )}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2, gap: 1 }}>
+          <Button 
+            onClick={handleDeleteCancel}
+            variant="outlined"
+            sx={{
+              minWidth: '80px'
+            }}
+          >
+            取消
+          </Button>
+          <Button 
+            onClick={handleDeleteConfirm}
+            color="error"
+            variant="contained"
+            autoFocus
+            startIcon={<Delete />}
+            sx={{
+              minWidth: '80px',
+              '&:hover': {
+                bgcolor: 'error.dark'
+              }
+            }}
+          >
+            删除
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };
