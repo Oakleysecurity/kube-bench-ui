@@ -18,12 +18,17 @@ from reportlab.pdfgen import canvas
 from reportlab.graphics.shapes import Drawing, Rect
 from reportlab.graphics.charts.piecharts import Pie
 from reportlab.graphics.charts.legends import Legend
+import concurrent.futures
+from typing import List
+import threading
 
 class KubernetesService:
     def __init__(self, kube_bench_image="aquasec/kube-bench:latest"):
         self.kube_bench_image = kube_bench_image
         self.monitor_threads = {}  # 存储监控线程
         self.stop_monitoring = {}  # 存储停止标志
+        self._thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=5)
+        self._lock = threading.Lock()
 
         # 注册中文字体 - 使用系统字体
         try:
@@ -79,75 +84,42 @@ class KubernetesService:
             v1 = client.CoreV1Api(api_client)
             nodes = v1.list_node()
 
-            # 为每个节点创建扫描任务
-            batch_v1 = client.BatchV1Api(api_client)
-            tasks = []
+            # 使用线程池并发创建任务
             successful_tasks = []
-
-            for node in nodes.items:
-                try:
-                    node_name = node.metadata.name
-                    node_ip = node.status.addresses[0].address
-                    node_role = "master" if "node-role.kubernetes.io/master" in node.metadata.labels else "worker"
-
-                    node_task_id = str(uuid.uuid4())
-                    job_name = f'kube-bench-{node_name}-{node_task_id[:8]}'
-                    
-                    # 先创建 kube-bench Job
-                    job = self.create_kube_bench_job(
-                        batch_v1,
-                        node_name,
-                        job_name
-                    )
-
-                    # 等待并获取 Pod 名称
-                    time.sleep(2)  # 给 Kubernetes 一些时间来创建 Pod
-                    pod_name = self.get_pod_name_by_job(v1, job_name)
-                    
-                    if not pod_name:
-                        raise Exception(f"Failed to get pod name for job {job_name}")
-
-                    # Job 创建成功后，获取到 Pod 名称后，创建数据库记录
-                    self.create_node_task_record(
+            with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+                future_to_node = {
+                    executor.submit(
+                        self._create_single_node_task,
                         cluster_id,
-                        cluster_config['cluster_name'],
-                        node_name,
-                        node_role,
-                        node_ip,
+                        cluster_config,
+                        node,
                         main_task_id,
-                        node_task_id,
-                        pod_name,  # Pod 名称存储在 scanner 字段
-                        job_name   # Job 名称存储在 kube_bench_job 字段
-                    )
-
-                    successful_tasks.append({
-                        'node_name': node_name,
-                        'node_task_id': node_task_id,
-                        'node_ip': node_ip,
-                        'node_role': node_role
-                    })
-
-                except Exception as e:
-                    print(f"Failed to create task for node {node_name}: {str(e)}")
-                    continue
+                        v1
+                    ): node 
+                    for node in nodes.items
+                }
+                
+                for future in concurrent.futures.as_completed(future_to_node):
+                    node = future_to_node[future]
+                    try:
+                        task_result = future.result()
+                        if task_result:
+                            successful_tasks.append(task_result)
+                    except Exception as e:
+                        print(f"创建节点 {node.metadata.name} 的扫描任务失败: {str(e)}")
 
             if not successful_tasks:
                 raise Exception("Failed to create any scan tasks")
 
-            if successful_tasks:
-                # 初始化停止标志
-                self.stop_monitoring[main_task_id] = False
-                
-                # 在新线程中启动监控
-                import threading
-                monitor_thread = threading.Thread(
-                    target=self.monitor_scan_task,
-                    args=(cluster_id, main_task_id),
-                    daemon=True
-                )
-                monitor_thread.start()
-                # 保存线程引用
-                self.monitor_threads[main_task_id] = monitor_thread
+            # 初始化监控
+            self.stop_monitoring[main_task_id] = False
+            monitor_thread = threading.Thread(
+                target=self.monitor_scan_task,
+                args=(cluster_id, main_task_id),
+                daemon=True
+            )
+            monitor_thread.start()
+            self.monitor_threads[main_task_id] = monitor_thread
 
             return {
                 'main_task_id': main_task_id,
@@ -156,6 +128,56 @@ class KubernetesService:
 
         except Exception as e:
             raise Exception(f"Failed to create scan task: {str(e)}")
+
+    def _create_single_node_task(self, cluster_id, cluster_config, node, main_task_id, v1):
+        """为单个节点创建扫描任务"""
+        try:
+            node_name = node.metadata.name
+            node_ip = node.status.addresses[0].address
+            node_role = "master" if "node-role.kubernetes.io/master" in node.metadata.labels else "worker"
+
+            node_task_id = str(uuid.uuid4())
+            job_name = f'kube-bench-{node_name}-{node_task_id[:8]}'
+            
+            # 创建 kube-bench Job
+            batch_v1 = client.BatchV1Api(v1.api_client)
+            job = self.create_kube_bench_job(
+                batch_v1,
+                node_name,
+                job_name
+            )
+
+            # 等待并获取 Pod 名称
+            time.sleep(2)
+            pod_name = self.get_pod_name_by_job(v1, job_name)
+            
+            if not pod_name:
+                raise Exception(f"Failed to get pod name for job {job_name}")
+
+            # 创建数据库记录
+            with self._lock:
+                self.create_node_task_record(
+                    cluster_id,
+                    cluster_config['cluster_name'],
+                    node_name,
+                    node_role,
+                    node_ip,
+                    main_task_id,
+                    node_task_id,
+                    pod_name,
+                    job_name
+                )
+
+            return {
+                'node_name': node_name,
+                'node_task_id': node_task_id,
+                'node_ip': node_ip,
+                'node_role': node_role
+            }
+
+        except Exception as e:
+            print(f"Error creating task for node {node.metadata.name}: {str(e)}")
+            return None
 
     def create_node_task_record(self, cluster_id, cluster_name, node_name, 
                               node_role, node_ip, main_task_id, node_task_id, pod_name, job_name):
@@ -221,7 +243,7 @@ class KubernetesService:
                 """
                 params = [cluster_id]
                 
-                # 如果指定了main_task_id，只查询该任务
+                # 如果定了main_task_id，只查询该任务
                 if main_task_id:
                     base_query += " AND main_task_id = %s"
                     params.append(main_task_id)
