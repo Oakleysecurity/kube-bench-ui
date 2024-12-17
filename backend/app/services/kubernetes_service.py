@@ -1,5 +1,5 @@
 from app.models.database import get_connection
-from kubernetes import client, config
+from kubernetes import client
 import uuid
 import json
 import time
@@ -13,21 +13,20 @@ from io import BytesIO
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 import os
-from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
-from reportlab.graphics.shapes import Drawing, Rect
+from reportlab.graphics.shapes import Drawing
 from reportlab.graphics.charts.piecharts import Pie
 from reportlab.graphics.charts.legends import Legend
 import concurrent.futures
-from typing import List
 import threading
+from config import KUBE_BENCH_MASTER_JOB, KUBE_BENCH_WORKER_JOB
+import yaml
 
 class KubernetesService:
-    def __init__(self, kube_bench_image=None):
+    def __init__(self):
         # 优先使用环境变量中的镜像名，其次使用参数传入的镜像名，最后使用默认值
         self.kube_bench_image = (
             os.getenv('KUBE_BENCH_IMAGE') or 
-            kube_bench_image or 
             "registry.cn-zhangjiakou.aliyuncs.com/cloudnativesec/kube-bench-zh:latest"
         )
         self.monitor_threads = {}  # 存储监控线程
@@ -51,7 +50,6 @@ class KubernetesService:
             font_found = False
             for font_path in font_paths:
                 if os.path.exists(font_path):
-                    print(font_path)
                     pdfmetrics.registerFont(TTFont('ChineseFont', font_path))
                     font_found = True
                     break
@@ -143,17 +141,22 @@ class KubernetesService:
         try:
             node_name = node.metadata.name
             node_ip = node.status.addresses[0].address
-            node_role = "master" if "node-role.kubernetes.io/master" in node.metadata.labels else "worker"
+            node_role = "master" if any(label in node.metadata.labels for label in ["node-role.kubernetes.io/master", "node-role.kubernetes.io/control-plane"]) else "worker"
 
             node_task_id = str(uuid.uuid4())
             job_name = f'kube-bench-{node_name}-{node_task_id[:8]}'
             
+            
             # 创建 kube-bench Job
             batch_v1 = client.BatchV1Api(v1.api_client)
-            job = self.create_kube_bench_job(
-                batch_v1,
+            job_manifest = self.create_kube_bench_job(
+                node_role,
                 node_name,
                 job_name
+            )
+            batch_v1.create_namespaced_job(
+                body=job_manifest,
+                namespace='default'
             )
 
             # 等待并获取 Pod 名称
@@ -205,38 +208,28 @@ class KubernetesService:
             cursor.execute(query, values)
             conn.commit()
 
-    def create_kube_bench_job(self, batch_v1, node_name, job_name):
-        job_manifest = {
-            'apiVersion': 'batch/v1',
-            'kind': 'Job',
-            'metadata': {
-                'name': job_name,
-                'namespace': 'default'
-            },
-            'spec': {
-                'template': {
-                    'spec': {
-                        'nodeSelector': {
-                            'kubernetes.io/hostname': node_name
-                        },
-                        'tolerations': [{
-                           'operator': 'Exists' 
-                        }],
-                        'containers': [{
-                            'name': 'kube-bench',
-                            'image': self.kube_bench_image,
-                            'args': ['--json']
-                        }],
-                        'restartPolicy': 'Never'
-                    }
-                },
-                'ttlSecondsAfterFinished': 600
-            }
+    def create_kube_bench_job(self, node_role: str, node_name: str, job_name: str) -> dict:
+        """
+        根据节点角色创建对应的 kube-bench job
+        """
+        if node_role.lower() in ['master', 'control-plane']:
+            job_yaml = KUBE_BENCH_MASTER_JOB
+        else:
+            job_yaml = KUBE_BENCH_WORKER_JOB
+        
+        # 解析 YAML 为 dict
+        job_dict = yaml.safe_load(job_yaml)
+        
+        # 添加节点选择器
+        job_dict['spec']['template']['spec']['nodeSelector'] = {
+            'kubernetes.io/hostname': node_name
         }
-        return batch_v1.create_namespaced_job(
-            body=job_manifest,
-            namespace='default'
-        )
+        job_dict['spec']['template']['spec']['containers'][0]['image'] = self.kube_bench_image
+        
+        # 生成唯一的 job 名称
+        job_dict['metadata']['name'] = job_name
+        
+        return job_dict
 
     def get_scan_tasks(self, cluster_id, main_task_id=None):
         """获取扫描任务状态，如果指定了main_task_id则只返回该主任务的状态"""
@@ -1131,6 +1124,7 @@ class KubernetesService:
 
         except Exception as e:
             print(f"Error in restore_monitoring: {str(e)}")
+            
 
 class NumberedCanvas(canvas.Canvas):
     def __init__(self, *args, **kwargs):

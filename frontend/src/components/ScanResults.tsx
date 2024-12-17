@@ -73,7 +73,8 @@ interface ScanResultsProps {
 }
 
 const ScanResults = ({ results, nodeName, clusterId, mainTaskId, nodeTaskId }: ScanResultsProps) => {
-  const controls = results?.Controls || [];
+  // const controls = results?.Controls || [];
+  const controls = useMemo(() => results?.Controls || [], [results]);
   const totals = results?.Totals || { total_fail: 0, total_pass: 0, total_warn: 0, total_info: 0 };
   
   // 添加筛选状态
@@ -99,8 +100,8 @@ const ScanResults = ({ results, nodeName, clusterId, mainTaskId, nodeTaskId }: S
 
   const handleExportReport = async () => {
     try {
-      // const response = await fetch('/api/v1/exportreport', {
-      const response = await fetch('http://localhost:5002/api/v1/exportreport', {
+      const response = await fetch('/api/v1/exportreport', {
+      // const response = await fetch('http://localhost:5002/api/v1/exportreport', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

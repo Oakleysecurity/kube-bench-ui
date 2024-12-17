@@ -1,4 +1,4 @@
-import mysql.connector.pooling
+from mysql.connector import pooling
 from config import Config
 
 db_config = {
@@ -11,7 +11,7 @@ db_config = {
     'pool_size': 5
 }
 
-connection_pool = mysql.connector.pooling.MySQLConnectionPool(**db_config)
+connection_pool = pooling.MySQLConnectionPool(**db_config)
 
 def get_connection():
     return connection_pool.get_connection() 
