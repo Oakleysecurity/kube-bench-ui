@@ -22,7 +22,7 @@ services:
       - MYSQL_USER=username
       - MYSQL_PASSWORD=your_password
       - MYSQL_DB=kube_bench
-      - KUBE_BENCH_IMAGE=harbor.ops.qianxin-inc.cn/cloudnativesec/kube-bench-zh:latest
+      - KUBE_BENCH_IMAGE=registry.cn-zhangjiakou.aliyuncs.com/cloudnativesec/kube-bench-zh:latest
     ports:
       - "5002:5002"
     depends_on:
