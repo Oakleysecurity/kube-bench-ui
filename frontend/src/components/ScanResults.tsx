@@ -99,7 +99,8 @@ const ScanResults = ({ results, nodeName, clusterId, mainTaskId, nodeTaskId }: S
 
   const handleExportReport = async () => {
     try {
-      const response = await fetch('/api/v1/exportreport', {
+      // const response = await fetch('/api/v1/exportreport', {
+      const response = await fetch('http://localhost:5002/api/v1/exportreport', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
