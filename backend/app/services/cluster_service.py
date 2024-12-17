@@ -1,6 +1,5 @@
 from app.models.database import get_connection
-from kubernetes import client, config
-from datetime import datetime
+from kubernetes import client
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 

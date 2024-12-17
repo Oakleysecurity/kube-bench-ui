@@ -2,11 +2,6 @@ from flask import Blueprint, request, send_file
 from app.services.kubernetes_service import KubernetesService
 from app.utils.response import success_response, error_response
 import uuid
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from io import BytesIO
 
 scan_bp = Blueprint('scan', __name__)
 k8s_service = KubernetesService()
@@ -18,8 +13,8 @@ def create_scan_task():
         if 'cluster_id' not in data:
             return error_response("Missing cluster_id")
 
-        kube_bench_image = data.get('kube_bench_image', "registry.cn-zhangjiakou.aliyuncs.com/cloudnativesec/kube-bench-zh:latest")
-        k8s_service = KubernetesService(kube_bench_image=kube_bench_image)
+        # kube_bench_image = data.get('kube_bench_image', "registry.cn-zhangjiakou.aliyuncs.com/cloudnativesec/kube-bench-zh:latest")
+        k8s_service = KubernetesService()
 
         main_task_id = str(uuid.uuid4())
         result = k8s_service.create_scan_task(data['cluster_id'], main_task_id)
