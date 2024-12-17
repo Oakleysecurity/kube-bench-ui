@@ -44,15 +44,14 @@ class KubernetesService:
         try:
             # 尝试使用系统字体路径
             font_paths = [
-                '/System/Library/Fonts/PingFang.ttc',  # macOS
-                '/System/Library/Fonts/STHeiti Light.ttc',  # macOS 备选
-                '/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf',  # Linux
-                'C:\\Windows\\Fonts\\msyh.ttf'  # Windows
+                './font/微软雅黑.ttf',
+                './font/STHeiti Light.ttc'
             ]
             
             font_found = False
             for font_path in font_paths:
                 if os.path.exists(font_path):
+                    print(font_path)
                     pdfmetrics.registerFont(TTFont('ChineseFont', font_path))
                     font_found = True
                     break

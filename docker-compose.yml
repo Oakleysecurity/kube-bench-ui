@@ -2,44 +2,65 @@ version: '3.8'
 
 services:
   frontend:
-    build: 
-      context: ./frontend
-      dockerfile: Dockerfile
+    image: kube-bench-ui-frontend:latest
+    container_name: kube-bench-frontend
     ports:
       - "80:80"
     depends_on:
       - backend
+    networks:
+      kube-bench-network:
+        aliases:
+          - frontend
 
   backend:
-    build: 
-      context: ./backend
-      dockerfile: Dockerfile
+    image: kube-bench-ui-backend:latest
+    container_name: kube-bench-backend
     environment:
       - MYSQL_HOST=mysql
       - MYSQL_PORT=3306
-      - MYSQL_USER=root
+      - MYSQL_USER=username
       - MYSQL_PASSWORD=your_password
       - MYSQL_DB=kube_bench
+      - KUBE_BENCH_IMAGE=harbor.ops.qianxin-inc.cn/cloudnativesec/kube-bench-zh:latest
     ports:
       - "5002:5002"
     depends_on:
       mysql:
         condition: service_healthy
+    networks:
+      kube-bench-network:
+        aliases:
+          - backend
 
   mysql:
-    image: mysql:8.0
+    image: kube-bench-ui-db:latest
+    container_name: kube-bench-mysql
     environment:
-      - MYSQL_ROOT_PASSWORD=your_password
+      - MYSQL_ROOT_PASSWORD=your_root_password
       - MYSQL_DATABASE=kube_bench
+      - MYSQL_USER=username
+      - MYSQL_PASSWORD=your_password
     volumes:
       - mysql_data:/var/lib/mysql
-      - ./mysql/init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
       - "3306:3306"
+    entrypoint:
+      - /bin/sh
+      - -c
+      - init.sh
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       timeout: 5s
       retries: 10
+    networks:
+      kube-bench-network:
+        aliases:
+          - mysql
 
 volumes:
   mysql_data: 
+
+networks:
+  kube-bench-network:
+    external: true 

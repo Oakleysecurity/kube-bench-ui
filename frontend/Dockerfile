@@ -1,14 +1,18 @@
-FROM node:16-alpine
-
+FROM node:23-alpine as builder
 WORKDIR /app
 
-COPY package.json package-lock.json ./
-RUN npm install
+# 复制 package.json 和 package-lock.json
+COPY package*.json ./
+
+# 使用 --legacy-peer-deps 安装依赖
+RUN npm install --legacy-peer-deps
 
 COPY . .
 RUN npm run build
 
-# 使用 nginx 来服务静态文件
+# 生产环境
 FROM nginx:alpine
-COPY --from=0 /app/build /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf 
+COPY --from=builder /app/build /usr/share/nginx/html
+COPY ./nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]

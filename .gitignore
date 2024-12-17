@@ -3,3 +3,5 @@ kube-bench-frontend/node_modules/
 backend/bin/
 backend/lib/
 *.DS_Store
+*node_modules
+*venv

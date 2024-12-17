@@ -1,5 +1,4 @@
-import mysql.connector
-from mysql.connector import pooling
+import mysql.connector.pooling
 from config import Config
 
 db_config = {
