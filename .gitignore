@@ -5,4 +5,4 @@ backend/lib/
 *.DS_Store
 *node_modules
 *venv
-*.vscode
+./.vscode/
