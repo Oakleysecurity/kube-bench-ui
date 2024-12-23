@@ -2,6 +2,13 @@ from flask import Flask
 from flask_cors import CORS
 from app.routes.cluster import cluster_bp
 from app.routes.scan import scan_bp
+import os
+
+# # 获取当前脚本所在目录
+# current_dir = os.path.dirname(os.path.realpath(__file__))
+
+# # 如果环境变量不存在，则使用默认值 ''
+# os.environ['PYTHONPATH'] = os.environ.get('PYTHONPATH', '') + f":{current_dir}"
 
 app = Flask(__name__)
 CORS(app, resources={

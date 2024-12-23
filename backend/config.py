@@ -14,6 +14,7 @@ kind: Job
 metadata:
   name: kube-bench-master
 spec:
+  ttlSecondsAfterFinished: 100
   template:
     spec:
       hostPID: true
@@ -68,6 +69,7 @@ spec:
               mountPath: /etc/group
               readOnly: true
       restartPolicy: Never
+      terminationGracePeriodSeconds: 30
       volumes:
         - name: var-lib-cni
           hostPath:
@@ -119,6 +121,7 @@ kind: Job
 metadata:
   name: kube-bench-node
 spec:
+  ttlSecondsAfterFinished: 100
   template:
     spec:
       hostPID: true
@@ -167,6 +170,7 @@ spec:
               mountPath: /opt/cni/bin/
               readOnly: true
       restartPolicy: Never
+      terminationGracePeriodSeconds: 30
       volumes:
         - name: var-lib-cni
           hostPath:

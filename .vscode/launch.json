@@ -10,7 +10,7 @@
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
-            "pythonPath": "/Users/qingweitongxue/code/kube-bench-zh-ui/backend/venv/bin/python3"
+            "python": "/Users/qingweitongxue/code/kube-bench-ui-build/kube-bench-ui/backend/venv/bin/python3"
         }
     ]
 }

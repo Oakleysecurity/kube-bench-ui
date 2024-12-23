@@ -21,6 +21,7 @@ import concurrent.futures
 import threading
 from config import KUBE_BENCH_MASTER_JOB, KUBE_BENCH_WORKER_JOB
 import yaml
+import pytz
 
 class KubernetesService:
     def __init__(self):
@@ -198,12 +199,12 @@ class KubernetesService:
             query = """
             INSERT INTO cluster_node_tasks (
                 cluster_id, cluster_name, node_name, node_role, node_ip,
-                scan_status, main_task_id, node_task_id, scanner, kube_bench_job
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                scan_status, main_task_id, node_task_id, scanner, kube_bench_job, task_created_at
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
             values = (
                 cluster_id, cluster_name, node_name, node_role, node_ip,
-                'pending', main_task_id, node_task_id, pod_name, job_name
+                'pending', main_task_id, node_task_id, pod_name, job_name, datetime.now(pytz.timezone('Asia/Shanghai'))
             )
             cursor.execute(query, values)
             conn.commit()
@@ -416,12 +417,19 @@ class KubernetesService:
                 for task in tasks:
                     try:
                         print(f"[INFO]正在获取节点任务{task['node_task_id']}的状态")
-                        current_time = datetime.now()
+                        # shanghai_tz = pytz.timezone('Asia/Shanghai')
+                        current_time = datetime.now(pytz.timezone('Asia/Shanghai'))
+                        shanghai_tz = pytz.timezone('Asia/Shanghai')
                         pending_timeout = 300  # 5分钟超时（单位：秒）
+                        
+                        if task['task_created_at'].tzinfo is None:
+                            task_created_at = shanghai_tz.localize(task['task_created_at'])
+                        else:
+                            task_created_at = task['task_created_at']
 
                         # 检查 pending 状态是否超时
                         if (task['scan_status'] == 'pending' and 
-                            (current_time - task['task_created_at']).total_seconds() > pending_timeout):
+                            (current_time - task_created_at).total_seconds() > pending_timeout):
                             # 更新为失败状态
                             print(f"[WARN]节点任务{task['node_task_id']}已经pending超过5分钟,标记扫描失败")
                             update_query = """
@@ -564,8 +572,8 @@ class KubernetesService:
                     insert_query = """
                     INSERT INTO cluster_scan_results (
                         cluster_id, cluster_name, node_name, node_ip,
-                        scan_result, main_task_id, node_task_id
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        scan_result, main_task_id, node_task_id, inserted_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     """
                     values = (
                         cluster_id,
@@ -574,7 +582,8 @@ class KubernetesService:
                         task_info['node_ip'],
                         formatted_logs,
                         main_task_id,
-                        node_task_id
+                        node_task_id,
+                        datetime.now(pytz.timezone('Asia/Shanghai'))
                     )
                     cursor.execute(insert_query, values)
                     conn.commit()
@@ -1145,10 +1154,11 @@ class NumberedCanvas(canvas.Canvas):
 
     def draw_page_number(self, page_count):
         # 添加页眉
+        # shanghai_tz = pytz.timezone('Asia/Shanghai')
         self.setFont("ChineseFont", 8)
         self.setFillColor(colors.HexColor('#757575'))
         self.drawString(50, 800, "Kubernetes 安全扫描报告")
-        self.drawRightString(550, 800, datetime.now().strftime("%Y-%m-%d"))
+        self.drawRightString(550, 800, datetime.now(pytz.timezone('Asia/Shanghai')).strftime("%Y-%m-%d"))
         self.line(50, 795, 550, 795)  # 添加分隔线
 
         # 添加页脚

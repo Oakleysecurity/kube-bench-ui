@@ -1,5 +1,7 @@
 from app.models.database import get_connection
 from kubernetes import client
+from datetime import datetime
+import pytz
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -25,8 +27,8 @@ class ClusterService:
                 query = """
                 INSERT INTO cluster_info (
                     cluster_id, cluster_name, cluster_owner, api_server,
-                    business_name, access_token, node_count, notes
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    business_name, access_token, node_count, notes, created_at, updated_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """
                 
                 values = (
@@ -37,7 +39,9 @@ class ClusterService:
                     data['business_name'],
                     data['access_token'],
                     node_count,
-                    data.get('notes', '')
+                    data.get('notes', ''),
+                    datetime.now(pytz.timezone('Asia/Shanghai')),
+                    datetime.now(pytz.timezone('Asia/Shanghai'))
                 )
                 
                 cursor.execute(query, values)
@@ -82,6 +86,8 @@ class ClusterService:
                 if not update_fields:
                     return None
                 
+                update_fields.append("updated_at = %s")
+                values.append(datetime.now(pytz.timezone('Asia/Shanghai')))
                 values.append(data['cluster_id'])
                 
                 query = f"""

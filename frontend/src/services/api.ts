@@ -2,8 +2,8 @@ import axios from 'axios';
 import { Cluster, TaskGroup } from '../types/types';
 
 const api = axios.create({
-  baseURL: '/api/v1',
-  // baseURL: 'http://localhost:5002/api/v1',
+  // baseURL: '/api/v1',
+  baseURL: 'http://localhost:5002/api/v1',
   timeout: 10000,
 });
 
